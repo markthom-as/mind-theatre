@@ -1,49 +1,65 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2 } from 'lucide-react';
+
+// Helper function to process color string
+const getProcessedColorForTailwind = (colorInput?: string): { type: 'hex' | 'class' | 'none', value?: string } => {
+  if (!colorInput) return { type: 'none' };
+  const trimmed = colorInput.trim();
+
+  if (trimmed.startsWith('#')) {
+    return { type: 'hex', value: trimmed };
+  }
+
+  // It's a string, potentially a Tailwind class name
+  // If it's a simple word (e.g., "red", "green") without a numeric shade or hyphen,
+  // append a default shade. This is a heuristic.
+  if (/^[a-zA-Z]+$/.test(trimmed)) { // Simple word like "red", "green"
+    return { type: 'class', value: `${trimmed}-500` };
+  }
+  
+  // Assumed to be a full Tailwind class name already (e.g., "red-500", "sky-700", "light-blue-500")
+  return { type: 'class', value: trimmed };
+};
 
 // --- UI helpers (could be split into separate files) ---
-function Spinner() {
-  return (
-    <div className="animate-spin rounded-full h-6 w-6 border-4 border-t-transparent border-primary mx-auto my-2" />
-  );
-}
-
 function ValenceArousal({ valence, arousal }: { valence?: number; arousal?: number }) {
-  if (valence == null || arousal == null) return null;
-  const valenceColor = valence < -0.2 ? 'text-red-400' : valence > 0.2 ? 'text-green-400' : 'text-yellow-300';
-  const arousalColor = arousal > 0.7 ? 'text-orange-400' : 'text-blue-400';
-  const x = 20 + 18 * (valence || 0);
-  const y = 40 - 36 * (arousal || 0);
+  if (valence == null && arousal == null) return null; // Show if at least one is present
+
+  const valenceColor = valence != null ? (valence < -0.2 ? 'text-red-500' : valence > 0.2 ? 'text-green-500' : 'text-yellow-500') : '';
+  const arousalColor = arousal != null ? (arousal > 0.7 ? 'text-orange-500' : 'text-blue-500') : '';
+
   return (
     <div className="absolute right-3 bottom-1 text-xs flex flex-col items-end gap-1">
-      <div className="flex gap-2">
-        <span className={valenceColor}>Valence: {valence.toFixed(2)}</span>
-        <span className={arousalColor}>Arousal: {arousal.toFixed(2)}</span>
+      <div className="flex gap-2 text-gray-400">
+        {valence != null && <span className={valenceColor}>Valence: {valence.toFixed(2)}</span>}
+        {arousal != null && <span className={arousalColor}>Arousal: {arousal.toFixed(2)}</span>}
       </div>
-      <svg width="40" height="40" className="mt-1">
-        <rect x="0" y="0" width="40" height="40" rx="6" fill="#23262f" stroke="#444" strokeWidth="1" />
-        <circle cx={x} cy={y} r="5" fill="#ffe066" stroke="#2196f3" strokeWidth="2" />
-      </svg>
     </div>
   );
 }
 
 function AffectGridKey() {
   return (
-    <div className="mt-4 p-2 bg-muted rounded border border-border text-sm">
-      <strong>Affect Grid Key:</strong>
-      <svg width="40" height="40" className="inline-block mx-2 align-middle">
-        <rect x="0" y="0" width="40" height="40" rx="6" fill="#23262f" stroke="#444" strokeWidth="1" />
-        <circle cx="8" cy="32" r="5" fill="#e45757" stroke="#2196f3" strokeWidth="2" />
-        <circle cx="20" cy="20" r="5" fill="#ffe066" stroke="#7f5af0" strokeWidth="2" />
-        <circle cx="32" cy="8" r="5" fill="#4caf50" stroke="#ff9800" strokeWidth="2" />
-      </svg>
-      <div className="mt-2 space-y-1">
-        <span className="flex items-center gap-2"><span className="inline-block w-4 h-4 rounded-full bg-red-400 border-2 border-blue-400"></span>Low valence (red), low arousal (blue)</span><br />
-        <span className="flex items-center gap-2"><span className="inline-block w-4 h-4 rounded-full bg-yellow-300 border-2 border-purple-400"></span>Neutral valence (yellow), medium arousal (purple)</span><br />
-        <span className="flex items-center gap-2"><span className="inline-block w-4 h-4 rounded-full bg-green-400 border-2 border-orange-400"></span>High valence (green), high arousal (orange)</span>
-      </div>
-    </div>
+    // <div className="mt-4 p-4 bg-slate-700 text-slate-200 rounded border border-slate-600 text-sm">
+    //   <strong>Affect Grid Key:</strong>
+    //   <svg width="40" height="40" className="inline-block mx-2 align-middle">
+    //     <rect x="0" y="0" width="40" height="40" rx="6" fill="#2d3748" stroke="#4a5568" strokeWidth="1" />
+    //     <circle cx="8" cy="32" r="5" fill="#f87171" stroke="#3b82f6" strokeWidth="2" /> 
+    //     <circle cx="20" cy="20" r="5" fill="#fde047" stroke="#8b5cf6" strokeWidth="2" />
+    //     <circle cx="32" cy="8" r="5" fill="#4ade80" stroke="#f97316" strokeWidth="2" />
+    //   </svg>
+    //   <div className="mt-2 space-y-1">
+    //     <span className="flex items-center gap-2"><span className="inline-block w-4 h-4 rounded-full bg-red-400 border-2 border-blue-500"></span>Low valence (red), low arousal (blue)</span><br />
+    //     <span className="flex items-center gap-2"><span className="inline-block w-4 h-4 rounded-full bg-yellow-400 border-2 border-purple-500"></span>Neutral valence (yellow), medium arousal (purple)</span><br />
+    //     <span className="flex items-center gap-2"><span className="inline-block w-4 h-4 rounded-full bg-green-400 border-2 border-orange-500"></span>High valence (green), high arousal (orange)</span>
+    //   </div>
+    // </div>
+    null
   );
 }
 
@@ -53,9 +69,20 @@ interface Message {
   reply?: string;
   color?: string;
   user?: string;
-  type?: string;
+  type?: string; // 'user', 'agent', 'psyche'
   valence?: number;
   arousal?: number;
+  timestamp?: string; // Added timestamp
+}
+
+// Add AgentConfig interface here for clarity, duplicating from loadPrompts.ts if necessary
+// or ideally importing it if this file becomes a .ts or .tsx file that allows imports from other .ts files.
+// For now, assuming it's implicitly known or defined elsewhere.
+// For the purpose of this edit, we'll assume AgentConfig has at least a 'name' property.
+interface AgentConfig { // Minimal definition for this context
+  name: string;
+  // Other properties like prompt, llm_params, color might exist on the fetched object
+  [key: string]: any; // Allow other properties
 }
 
 interface AgentMemoryEntry {
@@ -63,16 +90,19 @@ interface AgentMemoryEntry {
   timestamp: string;
   valence: number;
   arousal: number;
-  user_prompt: string;
+  userPrompt: string | null;
+  recallCount?: number;
 }
 
 export default function ChatUI() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
-  const [agents, setAgents] = useState<string[]>([]);
-  const [selectedAgent, setSelectedAgent] = useState<string>('');
+  const [agents, setAgents] = useState<string[]>([]); // Stays as string[]
+  const [selectedAgent, setSelectedAgent] = useState<string>(''); // Stays as string
   const [agentMemory, setAgentMemory] = useState<AgentMemoryEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // This is for sending messages
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false); // For loading initial chat history
+  const [isMemoryLoading, setIsMemoryLoading] = useState(false); // For loading agent memory
   const [chatId, setChatId] = useState<string | null>(null);
   const chatLogRef = useRef<HTMLDivElement>(null);
 
@@ -86,17 +116,38 @@ export default function ChatUI() {
   // Get or create chat session
   useEffect(() => {
     async function ensureChatSession() {
+      console.log("Attempting to ensure chat session...");
       const match = window.location.pathname.match(/\/chat\/(.+)$/);
       let id = match ? match[1] : null;
+      console.log("Initial id from URL:", id);
+
       if (!id) {
-        const resp = await fetch('/api/start_chat', { method: 'POST' });
-        if (resp.ok) {
-          const data = await resp.json();
-          id = data.chat_id;
-          window.history.replaceState({}, '', `/chat/${id}`);
+        console.log("No id in URL, attempting to start a new chat via API...");
+        try {
+          const resp = await fetch('/api/start_chat', { method: 'POST' });
+          console.log("API response status:", resp.status);
+          if (resp.ok) {
+            const data = await resp.json();
+            console.log("API response data:", data);
+            id = data.chatId;
+            console.log("New id from API:", id);
+            if (id) { // Only update history if id is valid
+              window.history.replaceState({}, '', `/chat/${id}`);
+              console.log("Updated window history with new id:", id);
+            } else {
+              console.error("Error: chat_id from API is null or undefined.");
+            }
+          } else {
+            console.error("API call to /api/start_chat failed:", resp.status, await resp.text());
+            // id remains null here
+          }
+        } catch (error) {
+          console.error("Error fetching /api/start_chat:", error);
+          // id remains null here
         }
       }
       setChatId(id);
+      console.log("Final chatId set to state:", id);
     }
     ensureChatSession();
   }, []);
@@ -105,19 +156,31 @@ export default function ChatUI() {
   useEffect(() => {
     if (!chatId) return;
     async function loadHistory() {
-      const resp = await fetch(`/api/chat/${chatId}/history`);
-      if (resp.ok) {
-        const msgs = await resp.json();
-        setMessages(msgs.map((msg: any) => ({
-          ...msg,
-          name: msg.agent_name || msg.sender || msg.name,
-          reply: msg.text || msg.reply,
-          type: msg.type,
-          valence: msg.valence,
-          arousal: msg.arousal,
-          color: msg.color,
-          user: msg.type === 'user' ? msg.text : undefined,
-        })));
+      setIsHistoryLoading(true);
+      try {
+        const resp = await fetch(`/api/chat/${chatId}/history`);
+        if (resp.ok) {
+          const msgs = await resp.json();
+          setMessages(msgs.map((msg: any) => ({
+            ...msg,
+            name: msg.agent_name || msg.sender || msg.name,
+            reply: msg.text || msg.reply,
+            type: msg.type,
+            valence: msg.valence,
+            arousal: msg.arousal,
+            color: msg.color,
+            timestamp: msg.timestamp, // Added timestamp from history
+            user: msg.type === 'user' ? msg.text : undefined,
+          })));
+        } else {
+          console.error("Failed to load chat history:", resp.status);
+          setMessages([]); // Clear messages on error or set to an error state message
+        }
+      } catch (error) {
+        console.error("Error loading chat history:", error);
+        setMessages([]); // Clear messages on error
+      } finally {
+        setIsHistoryLoading(false);
       }
     }
     loadHistory();
@@ -128,24 +191,37 @@ export default function ChatUI() {
     async function fetchAgents() {
       const resp = await fetch('/api/agents');
       if (resp.ok) {
-        const names = await resp.json();
-        setAgents(names);
-        if (names.length && !selectedAgent) setSelectedAgent(names[0]);
+        // The API returns AgentConfig[]
+        const agentConfigs: AgentConfig[] = await resp.json(); 
+        const agentNames: string[] = agentConfigs.map(config => config.name);
+        setAgents(agentNames); // agents state is now string[]
+        if (agentNames.length && !selectedAgent) { // selectedAgent is a string
+          setSelectedAgent(agentNames[0]); // Set to the name (string)
+        }
       }
     }
     fetchAgents();
-    // eslint-disable-next-line
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Fetch agent memory
   useEffect(() => {
     if (!selectedAgent) return;
     async function fetchMemory() {
-      const resp = await fetch(`/api/agent_memory/${selectedAgent}`);
-      if (resp.ok) {
-        setAgentMemory(await resp.json());
-      } else {
+      setIsMemoryLoading(true);
+      try {
+        const resp = await fetch(`/api/agent_memory/${selectedAgent}`);
+        if (resp.ok) {
+          setAgentMemory(await resp.json());
+        } else {
+          console.error("Failed to load agent memory:", resp.status);
+          setAgentMemory([]);
+        }
+      } catch (error) {
+        console.error("Error fetching agent memory:", error);
         setAgentMemory([]);
+      } finally {
+        setIsMemoryLoading(false);
       }
     }
     fetchMemory();
@@ -157,10 +233,11 @@ export default function ChatUI() {
     setIsLoading(true);
     setMessages((msgs) => [
       ...msgs,
-      { user: input, type: 'user' },
+      { user: input, type: 'user', timestamp: new Date().toISOString() }, // Added timestamp
       ...agents.map((name) => ({ name, reply: 'Thinking...', type: 'agent', color: undefined, valence: undefined, arousal: undefined }))
     ]);
     setInput('');
+    console.log("sendMessage: chatId before fetch:", chatId);
     const res = await fetch(`/api/chat/${chatId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -179,9 +256,17 @@ export default function ChatUI() {
       const agentMsgs = (data.agent_dialogue || []).map((entry: any) => ({
         ...entry,
         type: 'agent',
+        timestamp: entry.timestamp || new Date().toISOString(), // Added timestamp
       }));
       const psycheMsg = data.psyche_response
-        ? [{ name: 'Psyche', reply: data.psyche_response, type: 'psyche', valence: data.valence, arousal: data.arousal }]
+        ? [{
+            name: 'Psyche',
+            reply: data.psyche_response.text,
+            type: 'psyche',
+            valence: data.valence,
+            arousal: data.arousal,
+            timestamp: data.psyche_response.timestamp || new Date().toISOString(), // Added timestamp
+          }]
         : [];
       return [...trimmed, ...agentMsgs, ...psycheMsg];
     });
@@ -196,61 +281,120 @@ export default function ChatUI() {
 
   // --- Render ---
   return (
-    <div className="min-h-screen bg-[#181a20] text-[#e0e0e0] flex flex-col">
+    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col">
       {/* Top Bar */}
-      <header className="flex items-center justify-between bg-[#23262f] px-4 h-12 border-b border-[#23262f] fixed w-full z-10">
-        <div className="font-semibold text-lg text-[#f6c177] tracking-wide">Mind Theatre</div>
+      <header className="flex items-center justify-between bg-gray-800 text-gray-100 px-6 h-14 border-b border-gray-700 fixed z-20" style={{ width: 'calc(100% - 360px)'}}>
+        <div className="font-semibold text-xl text-purple-400 tracking-wide">Mind Theatre</div>
       </header>
       {/* Main Layout */}
-      <div className="flex flex-1 pt-12 relative">
+      <div className="flex flex-1 pt-14 relative">
         {/* Main Chat */}
-        <main className="flex flex-col flex-1 pr-[340px] min-h-0">
-          <div className="flex-1 flex flex-col overflow-y-auto px-4 py-2" ref={chatLogRef}>
-            <div className="flex flex-col gap-4">
-              {messages.map((msg, i) => {
-                let bubbleClass =
-                  msg.type === 'user'
-                    ? 'self-end bg-[#2d3748] text-[#f6f6f6] border border-[#3a3f4b]'
-                    : msg.type === 'psyche'
-                    ? 'self-start bg-[#23262f] text-[#f6c177] border-l-4 border-[#f6c177]'
-                    : msg.type === 'agent'
-                    ? 'self-start bg-[#23262f] text-[#e0e0e0] border-l-4 border-[#7f5af0]'
-                    : 'bg-[#2a2d38]';
-                return (
-                  <div
-                    key={i}
-                    className={`relative rounded-2xl px-5 py-2 max-w-[85%] shadow ${bubbleClass}`}
-                    style={msg.color ? { borderColor: msg.color } : {}}
-                  >
-                    <span className="block font-bold text-sm mb-1" style={msg.color ? { color: msg.color } : {}}>
-                      {msg.name || 'User'}
-                    </span>
-                    <span className="block text-sm whitespace-pre-wrap">
-                      {msg.reply ? <ReactMarkdown>{msg.reply}</ReactMarkdown> : msg.user}
-                    </span>
-                    {(msg.type === 'agent' || msg.type === 'psyche') && (
-                      <ValenceArousal valence={msg.valence} arousal={msg.arousal} />
+        <main className="flex flex-col flex-1 min-h-0 pr-[360px]">
+          <div className="flex-1 flex flex-col overflow-y-auto px-6 py-4 gap-4" ref={chatLogRef}>
+            {isHistoryLoading && (
+              <div className="flex items-center justify-center flex-1">
+                <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+              </div>
+            )}
+            {!isHistoryLoading && messages.map((msg, i) => {
+              let bubbleClass = '';
+              let bubbleStyle = {}; // For potential inline styles like border color
+              
+              // Process color for agent and psyche messages (user messages don't have msg.color typically)
+              const processedColor = (msg.type === 'agent' || msg.type === 'psyche') ? getProcessedColorForTailwind(msg.color) : { type: 'none' as 'none' };
+
+              if (msg.type === 'user') {
+                bubbleClass = 'self-end bg-purple-700 text-gray-100 border border-purple-600';
+              } else if (msg.type === 'psyche') {
+                bubbleClass = 'self-start bg-gray-700 text-gray-100 border-l-4 border-purple-500';
+              } else if (msg.type === 'agent') {
+                if (msg.reply === 'Thinking...') {
+                  bubbleClass = 'self-start bg-gray-700 text-gray-400 border border-gray-600 animate-pulse';
+                } else {
+                  bubbleClass = 'self-start bg-gray-700 text-gray-100 border-l-4'; // Default card for agent reply
+                  if (processedColor.type === 'hex') {
+                    bubbleStyle = { borderColor: processedColor.value };
+                    
+                  } else if (processedColor.type === 'class' && processedColor.value) {
+                    bubbleClass += ` border-${processedColor.value}`;
+                    
+                  } else {
+                    bubbleClass += ' border-gray-600'; // Default border if no specific color
+                    
+                  }
+                }
+              } else {
+                bubbleClass = 'self-start bg-gray-700 text-gray-400 border border-gray-600'; // Default for any other type
+              }
+
+              return (
+                <div
+                  key={i}
+                  className={`p-3 rounded-lg max-w-[75%] relative ${bubbleClass}`}
+                  style={bubbleStyle}
+                >
+                  <div className="flex flex-wrap items-baseline mb-1">
+                    {(msg.type === 'user') ? (
+                      <div className="font-semibold text-sm text-gray-300 mr-2">User</div>
+                    ) : (
+                      msg.name && (
+                        <div
+                          className={`font-semibold text-sm mr-2 ${processedColor.type === 'class' && processedColor.value ? `text-${processedColor.value}` : ''}`}
+                          style={{ color: processedColor.type === 'hex' && processedColor.value ? processedColor.value : undefined }}
+                        >
+                          {msg.name}
+                        </div>
+                      )
+                    )}
+
+                    {/* Timestamp Part */}
+                    {msg.timestamp && (
+                      <div className="text-xs text-gray-500 whitespace-nowrap">
+                        {new Date(msg.timestamp).toLocaleString([], { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      </div>
                     )}
                   </div>
-                );
-              })}
-              {isLoading && (
-                <div className="flex items-center gap-2 text-[#b0b0b0]">
-                  <Spinner /> <span>Thinking...</span>
+
+                  {msg.type === 'user' && msg.user && (
+                    <div className="dark:text-gray-200 text-gray-800 text-[12px] leading-snug max-w-none break-words">
+                      <ReactMarkdown
+                        components={{
+                          p: ({node, ...props}) => <p className="m-0 p-0" {...props} />
+                        }}
+                      >{msg.user}</ReactMarkdown>
+                    </div>
+                  )}
+                  {msg.type !== 'user' && msg.reply && (
+                    <div className="dark:text-gray-200 text-gray-800 text-[12px] leading-snug max-w-none break-words">
+                      <ReactMarkdown
+                        components={{
+                          p: ({node, ...props}) => <p className="m-0 p-0" {...props} />
+                        }}
+                      >{msg.reply}</ReactMarkdown>
+                    </div>
+                  )}
+                  {(msg.valence !== undefined || msg.arousal !== undefined) && (
+                    <ValenceArousal valence={msg.valence} arousal={msg.arousal} />
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })}
+            {isLoading && !isHistoryLoading && ( // Ensure general thinking spinner doesn't overlap with history loading
+              <div className="flex items-center gap-2 text-gray-400">
+                <Loader2 className="h-6 w-6 animate-spin text-purple-500" /> <span>Thinking...</span>
+              </div>
+            )}
           </div>
           {/* Input Area */}
           <form
-            className="flex items-end gap-2 border-t border-[#23262f] bg-[#181a20] px-4 py-3"
+            className="flex items-end gap-2 border-t border-gray-700 bg-gray-900 px-6 py-4 sticky bottom-0 z-10"
             onSubmit={e => {
               e.preventDefault();
               sendMessage();
             }}
           >
-            <textarea
-              className="flex-1 resize-none rounded bg-[#23262f] text-[#f6f6f6] border border-[#353945] px-3 py-2 text-base focus:outline-none focus:ring-2 focus:ring-[#7f5af0] min-h-[32px] max-h-[60px]"
+            <Textarea
+              className="flex-1 resize-none min-h-[36px] max-h-[80px] bg-gray-800 border-gray-600 placeholder-gray-400 text-gray-100 focus:ring-purple-500 focus:border-purple-500"
               rows={3}
               placeholder="Type your message to the Psyche..."
               value={input}
@@ -263,54 +407,65 @@ export default function ChatUI() {
                 }
               }}
             />
-            <button
-              type="submit"
-              className="px-5 py-2 bg-[#7f5af0] text-white rounded font-medium hover:bg-[#6246ea] transition disabled:opacity-60"
-              disabled={isLoading || !input.trim()}
-            >
+            <Button type="submit" disabled={isLoading || !input.trim()} className="bg-purple-600 hover:bg-purple-700 text-white font-semibold">
               Send
-            </button>
+            </Button>
           </form>
         </main>
         {/* Sidebar */}
-        <aside className="fixed right-0 top-0 h-full w-[340px] max-w-[420px] min-w-[300px] bg-[#20222a] text-[#e0e0e0] flex flex-col justify-between z-20 border-l border-[#23262f]">
-          <div className="flex-1 flex flex-col gap-2 p-4 overflow-y-auto">
-            <h3 className="text-base font-semibold text-[#f6c177] mb-2">Agent Memory</h3>
-            <select
-              className="w-full px-2 py-1 rounded border border-[#353945] bg-[#23262f] text-[#f6f6f6] text-sm mb-2"
-              value={selectedAgent}
-              onChange={e => setSelectedAgent(e.target.value)}
-            >
-              {agents.map(name => (
-                <option key={name} value={name}>{name}</option>
-              ))}
-            </select>
-            <div className="flex-1 overflow-y-auto text-sm">
-              {agentMemory.length === 0 && <div className="text-gray-400">No memory for this agent.</div>}
-              {agentMemory.map((entry, i) => (
-                <div key={i} className="mb-4 border-b border-[#353945] pb-2 last:border-b-0 last:pb-0">
-                  <div className="text-xs text-gray-400 mb-1">{new Date(entry.timestamp).toLocaleString()}</div>
-                  {entry.user_prompt && (
-                    <div className="bg-[#23262f] text-yellow-300 text-xs px-2 py-1 mb-1 border-l-4 border-yellow-300 rounded">
-                      <span className="font-bold text-[#f6c177] mr-1">Prompt:</span>
-                      {entry.user_prompt}
+        <aside className="fixed right-0 top-0 bottom-0 w-[360px] border-l border-gray-700 flex flex-col bg-gray-800 text-gray-100">
+          <div className="h-14 border-b border-gray-700 flex items-center px-4">
+            <h2 className="text-lg font-semibold text-purple-400">Agent Memory</h2>
+          </div>
+          <div className="p-4 flex flex-col flex-1">
+            <Select value={selectedAgent} onValueChange={setSelectedAgent}>
+              <SelectTrigger className="w-full mb-2 bg-gray-700 border-gray-600 text-gray-100 focus:ring-purple-500">
+                <SelectValue placeholder="Select agent" />
+              </SelectTrigger>
+              <SelectContent className="bg-gray-700 border-gray-600 text-gray-100">
+                {agents.map(name => (
+                  <SelectItem key={name} value={name} className="hover:bg-gray-600 focus:bg-gray-600 data-[highlighted]:bg-gray-600 data-[state=checked]:bg-purple-500">
+                    {name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <div className="flex-1 overflow-y-auto text-sm space-y-3">
+              {isMemoryLoading && (
+                <div className="flex items-center justify-center h-full">
+                  <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+                </div>
+              )}
+              {!isMemoryLoading && agentMemory.length === 0 && <div className="text-gray-400">No memory for this agent.</div>}
+              {!isMemoryLoading && agentMemory.map((entry, i) => (
+                <Card key={i} className="p-3 border-b border-gray-600 last:border-b-0 bg-gray-700 text-gray-100">
+                  <div className="text-xs text-gray-400 mb-1 flex justify-between">
+                    <span>{new Date(entry.timestamp).toLocaleString()}</span>
+                    {typeof entry.recallCount === 'number' && (
+                      <span className="text-xs text-purple-400">Recalled: {entry.recallCount} times</span>
+                    )}
+                  </div>
+                  {entry.userPrompt && (
+                    <div className="bg-gray-600 text-gray-300 text-xs px-2 py-1 mb-2 border-l-4 border-yellow-500 rounded">
+                      <span className="font-bold text-purple-400 mr-1">Prompt:</span>
+                      {entry.userPrompt}
                     </div>
                   )}
-                  <div className="text-[#e0e0e0] mb-1">{entry.text}</div>
-                  <div className="relative h-12">
+                  <div className="text-gray-100 mb-1">{entry.text}</div>
+                  <div className="relative h-10">
                     <ValenceArousal valence={entry.valence} arousal={entry.arousal} />
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
-            <AffectGridKey />
+            {/* <AffectGridKey /> */} 
+            {null}
+            <div className="pt-4 mt-auto border-t border-gray-700">
+              <Button variant="outline" className="w-full border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-gray-100 focus:ring-purple-500" onClick={clearMemory}>
+                Clear Selected Agent's Memory
+              </Button>
+            </div>
           </div>
-          <button
-            className="w-full mt-2 py-2 bg-red-500 text-white rounded font-medium hover:bg-red-700 transition"
-            onClick={clearMemory}
-          >
-            Clear Memory
-          </button>
         </aside>
       </div>
     </div>

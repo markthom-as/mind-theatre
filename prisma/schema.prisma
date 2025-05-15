@@ -1,5 +1,6 @@
 generator client {
   provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
 }
 
 datasource db {
@@ -35,4 +36,19 @@ model Message {
   valence   Float?
   arousal   Float?
   userPrompt String?
+}
+
+model Memory {
+  id             String    @id @default(uuid())
+  agentName      String
+  text           String
+  userPrompt     String?
+  embedding      Unsupported("vector(1536)")? // Adjust dimension (1536) if needed
+  timestamp      DateTime  @default(now())
+  lastRecalledTs DateTime?
+  valence        Float?
+  arousal        Float?
+  recallCount    Int?      @default(0)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 } 

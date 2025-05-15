@@ -1,185 +1,63 @@
-body {
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-    background-color: #181a20;
-    color: #e0e0e0;
-    margin: 0;
-    padding: 0;
-    width: 100vw;
-    height: 100vh;
-    min-height: 100vh;
-    min-width: 100vw;
-    overflow: hidden;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import "tw-animate-css";
+
+/* CSS Variables for theming - compatible with Tailwind v3 and ShadCN */
+:root {
+    --background: hsl(0 0% 100%);
+    --foreground: hsl(222.2 47.4% 11.2%);
+    --card: hsl(0 0% 100%);
+    --card-foreground: hsl(222.2 47.4% 11.2%);
+    --popover: hsl(0 0% 100%);
+    --popover-foreground: hsl(222.2 47.4% 11.2%);
+    --primary: hsl(222.2 47.4% 11.2%);
+    --primary-foreground: hsl(210 40% 98%);
+    --secondary: hsl(210 40% 96.1%);
+    --secondary-foreground: hsl(222.2 47.4% 11.2%);
+    --muted: hsl(210 40% 96.1%);
+    --muted-foreground: hsl(215.4 16.3% 46.9%);
+    --accent: hsl(210 40% 96.1%);
+    --accent-foreground: hsl(222.2 47.4% 11.2%);
+    --destructive: hsl(0 84.2% 60.2%);
+    --destructive-foreground: hsl(210 40% 98%);
+    --border: hsl(214.3 31.8% 91.4%);
+    --input: hsl(214.3 31.8% 91.4%);
+    --ring: hsl(222.2 47.4% 11.2%);
+    --radius: 0.5rem;
 }
 
-.container {
-    background: #23262f;
-    width: 100vw;
-    height: 100vh;
-    display: flex;
-    flex-direction: column;
-    overflow: hidden;
-    padding: 0;
+.dark {
+    --background: hsl(222.2 47.4% 11.2%); /* Dark Blue-Gray */
+    --foreground: hsl(210 40% 98%); /* Almost White */
+    --card: hsl(222.2 47.4% 15.2%); /* Slightly Lighter Dark Blue-Gray */
+    --card-foreground: hsl(210 40% 98%);
+    --popover: hsl(222.2 47.4% 11.2%);
+    --popover-foreground: hsl(210 40% 98%);
+    --primary: hsl(210 40% 98%);
+    --primary-foreground: hsl(222.2 47.4% 11.2%);
+    --secondary: hsl(217.2 32.6% 17.5%);
+    --secondary-foreground: hsl(210 40% 98%);
+    --muted: hsl(217.2 32.6% 17.5%);
+    --muted-foreground: hsl(215 20.2% 65.1%);
+    --accent: hsl(217.2 32.6% 17.5%);
+    --accent-foreground: hsl(210 40% 98%);
+    --destructive: hsl(0 72.2% 50.6%);
+    --destructive-foreground: hsl(210 40% 98%);
+    --border: hsl(217.2 32.6% 17.5%);
+    --input: hsl(217.2 32.6% 17.5%);
+    --ring: hsl(212.7 26.8% 83.9%);
 }
 
-.top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: #23262f;
-    padding: 0 12px;
-    height: 38px;
-    border-bottom: 1px solid #23262f;
-    position: fixed;
-    top: 0;
-    left: 0;
-    right: 340px;
-    width: auto;
-    z-index: 3;
+/* The following can be uncommented if you want global base styles for border and body */
+/*
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+    }
+  body {
+    @apply bg-background text-foreground;
+    }
 }
-.top-bar-left .logo-title {
-    font-size: 1em;
-    font-weight: 600;
-    color: #f6c177;
-    letter-spacing: 0.2px;
-}
-
-.main-layout {
-    display: flex;
-    flex: 1;
-    margin-top: 38px;
-    height: calc(100vh - 38px);
-}
-
-.main-chat {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-}
-
-.chat-window {
-    padding: 20px;
-    flex-grow: 1;
-    overflow-y: auto;
-    max-height: 350px;
-    border-bottom: 1px solid #23262f;
-}
-
-.chat-log {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.message {
-    padding: 8px 14px 4px 22px;
-    border-radius: 18px;
-    max-width: 85%;
-    line-height: 1.5;
-    background: #2a2d38;
-    color: #e0e0e0;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.12);
-    position: relative;
-}
-
-.message .name {
-    font-weight: bold;
-    font-size: 0.97em;
-    margin-bottom: 4px;
-    display: block;
-    color: #f6c177;
-}
-
-.message .text {
-    font-size: 0.92em;
-    white-space: pre-wrap;
-    color: #e0e0e0;
-}
-
-.user-message {
-    background-color: #2d3748;
-    color: #f6f6f6;
-    align-self: flex-end;
-    margin-left: auto;
-    border: 1px solid #3a3f4b;
-}
-
-.psyche-message {
-    background-color: #23262f;
-    color: #f6c177;
-    align-self: flex-start;
-    margin-right: auto;
-    border-left: 4px solid #f6c177;
-}
-
-.agent-message {
-    background-color: #23262f;
-    align-self: flex-start;
-    margin-right: auto;
-    border-left: 4px solid #7f5af0;
-    color: #e0e0e0;
-}
-
-.input-area {
-    display: flex;
-    padding: 6px 8px 6px 8px;
-    border-top: 1px solid #23262f;
-    background-color: #181a20;
-    gap: 6px;
-    flex-shrink: 0;
-    margin: 0;
-}
-
-#userInput {
-    flex-grow: 1;
-    padding: 6px 8px;
-    border: 1px solid #353945;
-    border-radius: 0;
-    resize: none;
-    font-size: 0.97em;
-    margin-right: 4px;
-    background: #23262f;
-    color: #f6f6f6;
-    min-height: 32px;
-    max-height: 60px;
-}
-
-#sendButton {
-    padding: 4px 14px;
-    background-color: #7f5af0;
-    color: #fff;
-    border: none;
-    border-radius: 0;
-    cursor: pointer;
-    font-size: 0.97em;
-    transition: background-color 0.2s ease;
-    margin-left: 0;
-}
-
-.sidebar {
-    width: 340px;
-    background: #1a1b22;
-    border-left: 1px solid #23262f;
-    display: flex;
-    flex-direction: column;
-    padding: 0 0 0 0;
-}
-
-.sidebar-content {
-    padding: 18px 18px 0 18px;
-    flex: 1;
-    overflow-y: auto;
-}
-
-#clearMemoryButton {
-    margin: 18px;
-    padding: 8px 0;
-    background: #23262f;
-    color: #f6c177;
-    border: 1px solid #353945;
-    border-radius: 0;
-    font-size: 1em;
-    cursor: pointer;
-    transition: background 0.18s, color 0.18s, border 0.18s;
-    box-shadow: none;
-    width: calc(100% - 36px);
-} 
+*/ 
