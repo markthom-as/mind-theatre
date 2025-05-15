@@ -1,14 +1,16 @@
 import prisma from './prisma';
 import { callOpenAI, callOllama } from './llm';
+import { Agent } from '../node_modules/.prisma/client';
 
-export async function getOrCreateAgents() {
-  // Example agent definitions (fill in prompts as needed)
-  const agentDefs = [
+// Define and export agentDefs at the module level
+export const agentDefs: { name: string; prompt: string }[] = [
     { name: 'Id', prompt: 'You are the Id. Respond with primal urges.' },
     { name: 'Ego', prompt: 'You are the Ego. Respond with rationality.' },
     { name: 'Superego', prompt: 'You are the Superego. Respond with moral judgment.' },
-  ];
-  // Upsert agents
+];
+
+export async function getOrCreateAgents(): Promise<Agent[]> {
+  // Upsert agents using the exported agentDefs
   const agents = await Promise.all(
     agentDefs.map(async (def) =>
       prisma.agent.upsert({
@@ -48,7 +50,7 @@ export async function getMessages(chatId: string) {
   });
 }
 
-export async function runAgent(agent: any, userInput: string, llm: 'openai' | 'ollama' = 'openai') {
+export async function runAgent(agent: { name: string, prompt: string }, userInput: string, llm: 'openai' | 'ollama' = 'openai') {
   const prompt = `${agent.prompt}\nUser: ${userInput}`;
   if (llm === 'openai') {
     return callOpenAI([{ role: 'system', content: prompt }]);

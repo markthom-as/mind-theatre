@@ -60,7 +60,8 @@ export async function add_episodic_memory(memoryInput: EpisodicMemoryInput): Pro
 export function should_write_memory(text: string): boolean {
   const MIN_LENGTH_FOR_MEMORY = 20; // Arbitrary threshold, can be refined
   // TODO: Implement more sophisticated checks (keywords, etc.) as in Python version
-  return text.length > MIN_LENGTH_FOR_MEMORY;
+  // return text.length > MIN_LENGTH_FOR_MEMORY;
+  return true;
 }
 
 const DEFAULT_NUM_MEMORIES_TO_RETRIEVE = 5;
@@ -97,8 +98,9 @@ export async function retrieve_relevant_memories(
     // and you have created an appropriate index for it for performance, e.g.:
     // CREATE INDEX ON "Memory" USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
     // or USING hnsw (embedding vector_cosine_ops);
+    // Select all fields needed, including recallCount to be returned after update
     const memories = await prisma.$queryRawUnsafe<Memory[]>(
-      `SELECT id, "agentName", text, "userPrompt", timestamp, valence, arousal, embedding::text 
+      `SELECT id, "agentName", text, "userPrompt", timestamp, valence, arousal, "recallCount", "lastRecalledTs", embedding::text
        FROM "Memory" 
        WHERE "agentName" = $1 AND embedding IS NOT NULL
        ORDER BY embedding <=> $2::vector 
@@ -108,13 +110,45 @@ export async function retrieve_relevant_memories(
       numMemories
     );
     
+    if (memories.length > 0) {
+      const memoryIds = memories.map(mem => mem.id);
+      const now = new Date();
+
+      // 3. Increment recallCount and update lastRecalledTs for the retrieved memories
+      // We need to do this in a transaction or loop if $executeRawUnsafe doesn't handle array batching well for updates.
+      // Prisma's updateMany is generally preferred for type safety and cleaner syntax if applicable.
+      // However, since we're already using $queryRawUnsafe, let's stick to it for incrementing.
+
+      await prisma.memory.updateMany({
+        where: {
+          id: {
+            in: memoryIds,
+          },
+        },
+        data: {
+          recallCount: {
+            increment: 1,
+          },
+          lastRecalledTs: now,
+        },
+      });
+      
+      // Re-fetch the memories to get the updated recallCount or update them in-memory
+      // For simplicity and to ensure data consistency, we can update them in-memory
+      // as Prisma's updateMany doesn't return the updated records in the same way $queryRaw does.
+      memories.forEach(mem => {
+        mem.recallCount = (mem.recallCount || 0) + 1;
+        mem.lastRecalledTs = now;
+      });
+    }
+
     // The embedding is returned as text from the query, parse it back to an array of numbers if needed by consumer
     // For now, we'll return it as is, as the primary use is for context, not re-computation here.
     // If the consumer needs the embedding as number[], it would need: memories.map(m => ({...m, embedding: JSON.parse(m.embedding)}))
     // However, Prisma might handle this conversion automatically if the type is correctly inferred.
     // Let's assume for now the retrieved Memory objects are suitable as is.
 
-    console.log(`Retrieved ${memories.length} memories for agent ${agentName} based on query: "${queryText.substring(0,50)}..."`);
+    console.log(`Retrieved and updated ${memories.length} memories for agent ${agentName} based on query: "${queryText.substring(0,50)}..."`);
     return memories;
   } catch (error) {
     console.error(`Error retrieving relevant memories for agent ${agentName}:`, error);

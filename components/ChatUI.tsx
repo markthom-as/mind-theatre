@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Card } from "@/components/ui/card";
+import Link from 'next/link';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2 } from 'lucide-react';
+import { Loader2, ArrowUp, ArrowDown } from 'lucide-react';
 
 // Helper function to process color string
 const getProcessedColorForTailwind = (colorInput?: string): { type: 'hex' | 'class' | 'none', value?: string } => {
@@ -24,6 +25,12 @@ const getProcessedColorForTailwind = (colorInput?: string): { type: 'hex' | 'cla
   
   // Assumed to be a full Tailwind class name already (e.g., "red-500", "sky-700", "light-blue-500")
   return { type: 'class', value: trimmed };
+};
+
+// Helper for truncating logs - MOVED HERE
+const truncateLog = (message: any, length = 100) => {
+  const stringified = typeof message === 'string' ? message : JSON.stringify(message);
+  return stringified.length > length ? stringified.substring(0, length) + '...' : stringified;
 };
 
 // --- UI helpers (could be split into separate files) ---
@@ -64,15 +71,16 @@ function AffectGridKey() {
 }
 
 // --- Main ChatUI component ---
-interface Message {
+interface MessageUI {
+  id: string; // Ensure id is always a string for React key
   name?: string;
   reply?: string;
   color?: string;
   user?: string;
-  type?: string; // 'user', 'agent', 'psyche'
+  type?: string; // 'user', 'agent', 'psyche', 'error'
   valence?: number;
   arousal?: number;
-  timestamp?: string; // Added timestamp
+  timestamp?: string;
 }
 
 // Add AgentConfig interface here for clarity, duplicating from loadPrompts.ts if necessary
@@ -94,16 +102,41 @@ interface AgentMemoryEntry {
   recallCount?: number;
 }
 
+// Define AgentDialogueEntry interface for client-side type safety
+interface AgentDialogueEntry {
+  id: string; // ID of the created agent message
+  name: string;
+  reply: string;
+  color: string;
+  valence: number | null;
+  arousal: number | null;
+  timestamp?: string; // Server might send this
+}
+
+// Define PsycheMessagePayload interface for client-side type safety
+interface PsycheMessagePayload {
+  id: string;
+  sender: 'Psyche'; // Should always be Psyche
+  text: string;
+  type: 'psyche';
+  color?: string | null;
+  valence: number | null;
+  arousal: number | null;
+  timestamp: string; // Prisma Message has a Date, but it's serialized as string
+}
+
 export default function ChatUI() {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<MessageUI[]>([]);
   const [input, setInput] = useState('');
-  const [agents, setAgents] = useState<string[]>([]); // Stays as string[]
-  const [selectedAgent, setSelectedAgent] = useState<string>(''); // Stays as string
+  const [agentsConfig, setAgentsConfig] = useState<AgentConfig[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string>('');
   const [agentMemory, setAgentMemory] = useState<AgentMemoryEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false); // This is for sending messages
-  const [isHistoryLoading, setIsHistoryLoading] = useState(false); // For loading initial chat history
-  const [isMemoryLoading, setIsMemoryLoading] = useState(false); // For loading agent memory
+  const [isLoading, setIsLoading] = useState(false);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [isMemoryLoading, setIsMemoryLoading] = useState(false);
   const [chatId, setChatId] = useState<string | null>(null);
+  const [memorySortField, setMemorySortField] = useState<'timestamp' | 'recallCount'>('timestamp');
+  const [memorySortOrder, setMemorySortOrder] = useState<'asc' | 'desc'>('desc');
   const chatLogRef = useRef<HTMLDivElement>(null);
 
   // Scroll chat to bottom on new message
@@ -131,7 +164,7 @@ export default function ChatUI() {
             console.log("API response data:", data);
             id = data.chatId;
             console.log("New id from API:", id);
-            if (id) { // Only update history if id is valid
+            if (id) { 
               window.history.replaceState({}, '', `/chat/${id}`);
               console.log("Updated window history with new id:", id);
             } else {
@@ -139,11 +172,9 @@ export default function ChatUI() {
             }
           } else {
             console.error("API call to /api/start_chat failed:", resp.status, await resp.text());
-            // id remains null here
           }
         } catch (error) {
           console.error("Error fetching /api/start_chat:", error);
-          // id remains null here
         }
       }
       setChatId(id);
@@ -160,25 +191,25 @@ export default function ChatUI() {
       try {
         const resp = await fetch(`/api/chat/${chatId}/history`);
         if (resp.ok) {
-          const msgs = await resp.json();
-          setMessages(msgs.map((msg: any) => ({
-            ...msg,
+          const msgsFromServer = await resp.json();
+          setMessages(msgsFromServer.map((msg: any) => ({
+            id: msg.id || Date.now().toString() + Math.random(), // Ensure ID
             name: msg.agent_name || msg.sender || msg.name,
             reply: msg.text || msg.reply,
             type: msg.type,
-            valence: msg.valence ?? 0,
-            arousal: msg.arousal ?? 0,
-            color: msg.color || '#888888', // Default color
-            timestamp: msg.timestamp, // Added timestamp from history
+            valence: msg.valence ?? undefined,
+            arousal: msg.arousal ?? undefined,
+            color: msg.color || (msg.type === 'user' ? 'transparent' : (msg.type === 'psyche' ? 'magenta-500' : 'gray-500')),
+            timestamp: msg.timestamp, 
             user: msg.type === 'user' ? msg.text : undefined,
           })));
         } else {
           console.error("Failed to load chat history:", resp.status);
-          setMessages([]); // Clear messages on error or set to an error state message
+          setMessages([]);
         }
       } catch (error) {
         console.error("Error loading chat history:", error);
-        setMessages([]); // Clear messages on error
+        setMessages([]);
       } finally {
         setIsHistoryLoading(false);
       }
@@ -186,23 +217,20 @@ export default function ChatUI() {
     loadHistory();
   }, [chatId]);
 
-  // Fetch agent list
+  // Fetch agent list (AgentConfig objects)
   useEffect(() => {
     async function fetchAgents() {
       const resp = await fetch('/api/agents');
       if (resp.ok) {
-        // The API returns AgentConfig[]
-        const agentConfigs: AgentConfig[] = await resp.json(); 
-        const agentNames: string[] = agentConfigs.map(config => config.name);
-        setAgents(agentNames); // agents state is now string[]
-        if (agentNames.length && !selectedAgent) { // selectedAgent is a string
-          setSelectedAgent(agentNames[0]); // Set to the name (string)
+        const agentConfigsData: AgentConfig[] = await resp.json(); 
+        setAgentsConfig(agentConfigsData);
+        if (agentConfigsData.length && !selectedAgent) {
+          setSelectedAgent(agentConfigsData[0].name);
         }
       }
     }
     fetchAgents();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedAgent]);
 
   // Fetch agent memory
   useEffect(() => {
@@ -210,7 +238,7 @@ export default function ChatUI() {
     async function fetchMemory() {
       setIsMemoryLoading(true);
       try {
-        const resp = await fetch(`/api/agent_memory/${selectedAgent}`);
+        const resp = await fetch(`/api/agent_memory/${selectedAgent}?sortBy=${memorySortField}&sortOrder=${memorySortOrder}`);
         if (resp.ok) {
           setAgentMemory(await resp.json());
         } else {
@@ -225,57 +253,191 @@ export default function ChatUI() {
       }
     }
     fetchMemory();
-  }, [selectedAgent]);
+  }, [selectedAgent, memorySortField, memorySortOrder]);
 
-  // Send message
   async function sendMessage() {
-    if (!input.trim() || !chatId || isLoading) return;
+    const currentInput = input.trim();
+    if (!currentInput || !chatId || isLoading) return;
     setIsLoading(true);
-    setMessages((msgs) => [
-      ...msgs,
-      { user: input, type: 'user', timestamp: new Date().toISOString() }, // Added timestamp
-      ...agents.map((name) => ({ name, reply: 'Thinking...', type: 'agent', color: undefined, valence: undefined, arousal: undefined }))
-    ]);
-    setInput('');
-    console.log("sendMessage: chatId before fetch:", chatId);
-    const res = await fetch(`/api/chat/${chatId}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message: input })
-    });
-    const data = await res.json();
+    setInput(''); // Clear input after grabbing its value
+
+    const userMessageId = Date.now().toString() + '_user';
+    const userMessage: MessageUI = {
+      id: userMessageId,
+      user: currentInput,
+      type: 'user',
+      timestamp: new Date().toISOString(),
+      color: 'transparent' // Or a specific user color
+    };
     setMessages((msgs) => {
-      let trimmed = [...msgs];
-      let count = 0;
-      for (let i = trimmed.length - 1; i >= 0 && count < agents.length; i--) {
-        if (trimmed[i].type === 'agent' && trimmed[i].reply === 'Thinking...') {
-          trimmed.splice(i, 1);
-          count++;
+      const newState = [...msgs, userMessage];
+      console.log("[ChatUI] User message optimistically added. New state:", truncateLog(newState)); // Added log
+      return newState;
+    });
+
+    // Add agent placeholders
+    const agentPlaceholders: MessageUI[] = agentsConfig.map(agent => ({
+      id: `${agent.name}_${userMessageId}_placeholder`,
+      name: agent.name,
+      reply: 'Thinking...',
+      type: 'agent',
+      color: agent.color || 'grey-500', // Use agent's configured color or default
+      timestamp: new Date().toISOString(),
+    }));
+    setMessages(prev => {
+      const newState = [...prev, ...agentPlaceholders];
+      console.log("[ChatUI] Agent placeholders added. New state:", truncateLog(newState)); // Added log
+      return newState;
+    });
+
+    try {
+      const response = await fetch(`/api/chat/${chatId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: currentInput }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Failed to process stream request.' }));
+        throw new Error(errorData.message || `API Error: ${response.status}`);
+      }
+
+      if (!response.body) {
+        throw new Error('Response body is null.');
+      }
+
+      const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+      let buffer = '';
+      console.log("[ChatUI] Starting stream processing loop...");
+
+      while (true) {
+        console.log("[ChatUI] Waiting for next stream chunk or stream end...");
+        const { value, done } = await reader.read();
+        console.log(`[ChatUI] reader.read() returned. done: ${done}, value received: ${!!value}`);
+        
+        if (value) {
+          console.log("[ChatUI] Stream chunk received:", truncateLog(value)); 
+        }
+
+        if (done) {
+          console.log("[ChatUI] Stream finished by reader.");
+          setIsLoading(false); // Ensure loading is false if stream ends before 'event: done' from server
+          break;
+        }
+
+        buffer += value;
+        console.log("[ChatUI] Raw buffer before EOL loop:", truncateLog(buffer)); // New log for raw buffer
+        let eolIndex;
+        
+        while ((eolIndex = buffer.indexOf('\n\n')) >= 0) {
+          const eventString = buffer.substring(0, eolIndex).trim();
+          console.log("[ChatUI] Extracted event string:", truncateLog(eventString.replace(/\n/g, '\\n')));
+          buffer = buffer.substring(eolIndex + 2);
+          console.log("[ChatUI] Remaining buffer:", truncateLog(buffer.replace(/\n/g, '\\n')));
+
+          if (eventString.startsWith('event: done')) {
+            console.log("[ChatUI] Received 'event: done' from server.");
+            setIsLoading(false);
+            return; 
+          }
+
+          if (eventString.startsWith('data: ')) {
+            const jsonString = eventString.substring('data: '.length);
+            if (jsonString.trim() === "") {
+              console.log("[ChatUI] Empty data payload, skipping.");
+              await new Promise(resolve => setTimeout(resolve, 0)); // Yield even for empty payload to prevent tight loop on bad data
+              continue;
+            }
+            console.log("[ChatUI] Attempting to parse JSON:", truncateLog(jsonString));
+            try {
+              const eventData = JSON.parse(jsonString);
+              console.log("[ChatUI] Parsed event data:", truncateLog(eventData));
+
+              if (eventData.type === 'user_message') {
+                console.log("[ChatUI] Processing user_message event:", truncateLog(eventData.payload));
+                // Optional: Update user message with ID from DB if needed
+              } else if (eventData.type === 'agent_update') {
+                console.log("[ChatUI] Processing agent_update event:", truncateLog(eventData.payload));
+                const agentPayload = eventData.payload as AgentDialogueEntry;
+                setMessages(prev => {
+                  console.log(`[ChatUI] Updating agent: ${agentPayload.name}. Placeholder ID to find: (name based)`);
+                  const updated = prev.map(msg => 
+                    (msg.name === agentPayload.name && msg.reply === 'Thinking...') ? 
+                    {
+                      ...msg, 
+                      id: agentPayload.id, 
+                      reply: agentPayload.reply,
+                      color: getProcessedColorForTailwind(agentPayload.color).value || msg.color, 
+                      valence: agentPayload.valence ?? undefined,
+                      arousal: agentPayload.arousal ?? undefined,
+                      timestamp: agentPayload.timestamp || new Date().toISOString(), 
+                    } : msg
+                  );
+                  if (JSON.stringify(prev) === JSON.stringify(updated)) {
+                    console.warn(`[ChatUI] Agent placeholder for ${agentPayload.name} not found or already updated. Current prev state:`, truncateLog(prev));
+                  }
+                  console.log("[ChatUI] State after agent_update attempt for", agentPayload.name, truncateLog(updated));
+                  return updated;
+                });
+              } else if (eventData.type === 'psyche_response') {
+                console.log("[ChatUI] Processing psyche_response event:", truncateLog(eventData.payload));
+                const psychePayload = eventData.payload as PsycheMessagePayload;
+                setMessages(prev => {
+                  const newState = [...prev, {
+                    id: psychePayload.id,
+                    name: 'Psyche',
+                    reply: psychePayload.text,
+                    type: 'psyche',
+                    color: getProcessedColorForTailwind(psychePayload.color || 'magenta-600').value,
+                    valence: psychePayload.valence ?? undefined,
+                    arousal: psychePayload.arousal ?? undefined,
+                    timestamp: psychePayload.timestamp || new Date().toISOString(),
+                  } as MessageUI];
+                  console.log("[ChatUI] Added Psyche message to state. New state:", truncateLog(newState));
+                  return newState;
+                });
+              } else if (eventData.type === 'agent_error' || eventData.type === 'error') {
+                console.log("[ChatUI] Processing error event:", truncateLog(eventData.payload));
+                const errorPayload = eventData.payload as { name?: string; message: string };
+                if (errorPayload.name) { // Agent-specific error
+                  setMessages(prev => prev.map(msg => 
+                    (msg.name === errorPayload.name && msg.reply === 'Thinking...') ? 
+                    { ...msg, reply: `Error: ${errorPayload.message}`, color: 'red-500' } : msg
+                  ));
+                } else { // General error
+                  setMessages(prev => [...prev, {
+                    id: Date.now().toString() + '_error',
+                    name: 'System Error',
+                    reply: errorPayload.message,
+                    type: 'error',
+                    color: 'red-500',
+                    timestamp: new Date().toISOString(),
+                  }]);
+                }
+              }
+            } catch (e) {
+              console.error("[ChatUI] Error parsing streamed JSON or updating UI:", e, "Original JSON string:", jsonString);
+            }
+          }
+          // After processing one event (or a non-event string like only 'data: '), yield before next iteration of inner while loop.
+          await new Promise(resolve => setTimeout(resolve, 0)); 
         }
       }
-      const agentMsgs = (data.agent_dialogue || []).map((entry: any) => ({
-        name: entry.name,
-        reply: entry.reply,
-        type: 'agent',
-        color: entry.color || '#888888', // Default color
-        valence: entry.valence ?? 0,
-        arousal: entry.arousal ?? 0,
-        timestamp: entry.timestamp || new Date().toISOString(), 
-      }));
-      const psycheMsg = data.psyche_response
-        ? [{
-            name: 'Psyche',
-            reply: data.psyche_response.text,
-            type: 'psyche',
-            valence: data.psyche_response.valence ?? 0,
-            arousal: data.psyche_response.arousal ?? 0,
-            color: data.psyche_response.color || 'magenta', // Default Psyche color
-            timestamp: data.psyche_response.timestamp || new Date().toISOString(),
-          }]
-        : [];
-      return [...trimmed, ...agentMsgs, ...psycheMsg];
-    });
-    setIsLoading(false);
+    } catch (error) {
+      console.error("[ChatUI] Error sending message or processing stream:", error);
+      setMessages(prev => [...prev, {
+        id: Date.now().toString() + '_general_error',
+        name: 'System Error',
+        reply: error instanceof Error ? error.message : 'An unexpected error occurred.',
+        type: 'error',
+        color: 'red-500',
+        timestamp: new Date().toISOString(),
+      }]);
+      setIsLoading(false); // Ensure isLoading is set to false in case of error
+    } finally {
+      // isLoading should be reliably set by 'event: done' or in catch blocks.
+      console.log("[ChatUI] Exiting sendMessage function. isLoading:", isLoading);
+    }
   }
 
   // Clear memory
@@ -286,16 +448,22 @@ export default function ChatUI() {
 
   // --- Render ---
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col">
-      {/* Top Bar */}
-      <header className="flex items-center justify-between bg-gray-800 text-gray-100 px-6 h-14 border-b border-gray-700 fixed z-20" style={{ width: 'calc(100% - 360px)'}}>
-        <div className="font-semibold text-xl text-purple-400 tracking-wide">Mind Theatre</div>
-      </header>
-      {/* Main Layout */}
-      <div className="flex flex-1 pt-14 relative">
-        {/* Main Chat */}
-        <main className="flex flex-col flex-1 min-h-0 pr-[360px]">
-          <div className="flex-1 flex flex-col overflow-y-auto px-6 py-4 gap-4" ref={chatLogRef}>
+    <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-row">
+      {/* Main Content Pane (Navbar + Chat) */}
+      <div className="flex-1 flex flex-col h-screen">
+        {/* Top Bar / Navbar */}
+        <header className="flex items-center justify-between bg-gray-800 text-gray-100 px-6 h-14 border-b border-gray-700 flex-shrink-0">
+          <Link href="/">
+            <div className="font-semibold text-xl text-purple-400 tracking-wide">Mind Theatre</div>
+          </Link>
+          <div className="flex space-x-2">
+            {/* Add any other header components here */}
+          </div>
+        </header>
+
+        {/* Chat Area (scrollable messages + fixed input) */}
+        <main className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 overflow-y-auto px-6 py-4 gap-4 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-900" ref={chatLogRef}>
             {isHistoryLoading && (
               <div className="flex items-center justify-center flex-1">
                 <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
@@ -316,7 +484,7 @@ export default function ChatUI() {
                 if (msg.reply === 'Thinking...') {
                   bubbleClass = 'self-start bg-gray-700 text-gray-400 border border-gray-600 animate-pulse';
                 } else {
-                  bubbleClass = 'self-start bg-gray-700 text-gray-100 border-l-4'; // Default card for agent reply
+                  bubbleClass = 'self-start bg-gray-800 text-gray-100 border-l-4'; // Default card for agent reply. Changed bg-gray-700 to bg-gray-800
                   if (processedColor.type === 'hex') {
                     bubbleStyle = { borderColor: processedColor.value };
                     
@@ -334,8 +502,8 @@ export default function ChatUI() {
 
               return (
                 <div
-                  key={i}
-                  className={`p-3 rounded-lg max-w-[75%] relative ${bubbleClass}`}
+                  key={msg.id}
+                  className={`p-3 rounded-lg max-w-[75%] relative ${bubbleClass} my-2 ${msg.type === 'user' ? 'ml-auto' : 'mr-auto'}`}
                   style={bubbleStyle}
                 >
                   <div className="flex flex-wrap items-baseline mb-1">
@@ -421,62 +589,131 @@ export default function ChatUI() {
             </Button>
           </form>
         </main>
-        {/* Sidebar */}
-        <aside className="fixed right-0 top-0 bottom-0 w-[360px] border-l border-gray-700 flex flex-col bg-gray-800 text-gray-100">
-          <div className="h-14 border-b border-gray-700 flex items-center px-4">
-            <h2 className="text-lg font-semibold text-purple-400">Agent Memory</h2>
-          </div>
-          <div className="p-4 flex flex-col flex-1">
-            <Select value={selectedAgent} onValueChange={setSelectedAgent}>
-              <SelectTrigger className="w-full mb-2 bg-gray-700 border-gray-600 text-gray-100 focus:ring-purple-500">
-                <SelectValue placeholder="Select agent" />
-              </SelectTrigger>
-              <SelectContent className="bg-gray-700 border-gray-600 text-gray-100">
-                {agents.map(name => (
-                  <SelectItem key={name} value={name} className="hover:bg-gray-600 focus:bg-gray-600 data-[highlighted]:bg-gray-600 data-[state=checked]:bg-purple-500">
-                    {name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="flex-1 overflow-y-auto text-sm space-y-3">
-              {isMemoryLoading && (
-                <div className="flex items-center justify-center h-full">
-                  <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
-                </div>
+      </div>
+
+      {/* Sidebar */}
+      <aside className="w-96 h-screen bg-gray-800 border-l border-gray-700 p-2 flex flex-col space-y-2 overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800 flex-shrink-0">
+        {/* Memory Controls Card */}
+        <Card className="bg-gray-850 border-0 shadow-none flex-shrink-0">
+          <CardHeader className="p-2">
+            <CardTitle className="text-md text-purple-300">Memory Controls</CardTitle>
+          </CardHeader>
+          <CardContent className="p-2">
+            <div className="flex items-center space-x-2">
+              <div className="flex-1 min-w-0">
+                {/* <label htmlFor="agent-select" className="block text-xs font-medium text-gray-400 mb-1">Agent</label> */}
+                <Select onValueChange={setSelectedAgent} value={selectedAgent}>
+                  <SelectTrigger id="agent-select" className="w-full bg-gray-700 border-gray-600 text-gray-100 h-8 text-xs">
+                    <SelectValue placeholder="Select Agent" />
+                  </SelectTrigger>
+                  <SelectContent className="bg-gray-700 text-gray-100 border-gray-600">
+                    {agentsConfig.map(agent => (
+                      <SelectItem key={agent.name} value={agent.name} className="text-xs hover:bg-gray-600 focus:bg-gray-600">
+                        {agent.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {selectedAgent && (
+                <>
+                  <div className="flex-1 min-w-0">
+                    {/* <label htmlFor="sort-field" className="block text-xs font-medium text-gray-400 mb-1">Sort by</label> */}
+                    <Select value={memorySortField} onValueChange={(value) => setMemorySortField(value as 'timestamp' | 'recallCount')}>
+                      <SelectTrigger id="sort-field" className="w-full bg-gray-700 border-gray-600 text-gray-100 text-xs h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-gray-700 text-gray-100 border-gray-600">
+                        <SelectItem value="timestamp" className="text-xs">Date</SelectItem>
+                        <SelectItem value="recallCount" className="text-xs">Recalls</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="flex items-center space-x-1 flex-shrink-0">
+                    {/* <label className="block text-xs font-medium text-gray-400 mb-1 invisible">Order</label> */}
+                    <Button
+                      variant={memorySortOrder === 'asc' ? 'secondary' : 'outline'}
+                      size="icon"
+                      className="h-8 w-8 bg-gray-700 border-gray-600 hover:bg-gray-600 text-gray-100 data-[state=active]:bg-purple-600 data-[state=active]:border-purple-500"
+                      onClick={() => setMemorySortOrder('asc')}
+                      data-state={memorySortOrder === 'asc' ? 'active' : 'inactive'}
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant={memorySortOrder === 'desc' ? 'secondary' : 'outline'}
+                      size="icon"
+                      className="h-8 w-8 bg-gray-700 border-gray-600 hover:bg-gray-600 text-gray-100 data-[state=active]:bg-purple-600 data-[state=active]:border-purple-500"
+                      onClick={() => setMemorySortOrder('desc')}
+                      data-state={memorySortOrder === 'desc' ? 'active' : 'inactive'}
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </>
               )}
-              {!isMemoryLoading && agentMemory.length === 0 && <div className="text-gray-400">No memory for this agent.</div>}
-              {!isMemoryLoading && agentMemory.map((entry, i) => (
-                <Card key={i} className="p-3 border-b border-gray-600 last:border-b-0 bg-gray-700 text-gray-100">
-                  <div className="text-xs text-gray-400 mb-1 flex justify-between">
-                    <span>{new Date(entry.timestamp).toLocaleString()}</span>
-                    {typeof entry.recallCount === 'number' && (
-                      <span className="text-xs text-purple-400">Recalled: {entry.recallCount} times</span>
-                    )}
-                  </div>
-                  {entry.userPrompt && (
-                    <div className="bg-gray-600 text-gray-300 text-xs px-2 py-1 mb-2 border-l-4 border-yellow-500 rounded">
-                      <span className="font-bold text-purple-400 mr-1">Prompt:</span>
-                      {entry.userPrompt}
-                    </div>
-                  )}
-                  <div className="text-gray-100 mb-1">{entry.text}</div>
-                  <div className="relative h-10">
-                    <ValenceArousal valence={entry.valence} arousal={entry.arousal} />
-                  </div>
-                </Card>
-              ))}
             </div>
-            {/* <AffectGridKey /> */} 
-            {null}
-            <div className="pt-4 mt-auto border-t border-gray-700">
-              <Button variant="outline" className="w-full border-gray-600 text-gray-300 hover:bg-gray-700 hover:text-gray-100 focus:ring-purple-500" onClick={clearMemory}>
-                Clear Selected Agent's Memory
+          </CardContent>
+        </Card>
+
+        {/* Memory List Card */}
+        {selectedAgent && (
+          <Card className="bg-gray-850 border-0 shadow-none flex-grow flex flex-col min-h-0">
+            <CardHeader className="p-2">
+               <CardTitle className="text-md text-purple-400">Memories: {selectedAgent}</CardTitle>
+            </CardHeader>
+            <CardContent className="flex-grow flex flex-col min-h-0 p-0">
+              <div className="flex-1 overflow-y-auto min-h-0 text-sm space-y-2 p-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+                {isMemoryLoading && (
+                  <div className="flex items-center justify-center h-full">
+                    <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+                  </div>
+                )}
+                {!isMemoryLoading && agentMemory.length === 0 && <div className="text-gray-400 p-4 text-center">No memories for this agent.</div>}
+                {!isMemoryLoading && agentMemory.map((entry, i) => (
+                  <Card key={i} className="p-2 border-b border-gray-700 last:border-b-0 bg-gray-700 text-gray-100 shadow-sm border-0">
+                    <div className="text-xs text-gray-400 mb-1 flex justify-between">
+                      <span>{new Date(entry.timestamp).toLocaleString()}</span>
+                      {typeof entry.recallCount === 'number' && (
+                        <span className="text-xs text-purple-400">Recalled: {entry.recallCount} times</span>
+                      )}
+                    </div>
+                    {entry.userPrompt && (
+                      <div className="bg-gray-600 text-gray-300 text-xs px-2 py-1 my-1 border-l-2 border-yellow-500 rounded">
+                        <span className="font-bold text-purple-400 mr-1">Prompt:</span>
+                        {entry.userPrompt}
+                      </div>
+                    )}
+                    <div className="text-gray-100 mb-1 text-sm">{entry.text}</div>
+                    <div className="relative h-8">
+                      <ValenceArousal valence={entry.valence} arousal={entry.arousal} />
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </CardContent>
+            <div className="p-2 border-t border-gray-700 mt-auto flex-shrink-0">
+              <Button variant="outline" className="w-full border-red-700 text-red-400 hover:bg-red-700 hover:text-gray-100 focus:ring-red-500" onClick={clearMemory}>
+                Clear Memories for {selectedAgent}
               </Button>
             </div>
+          </Card>
+        )}
+
+        {!selectedAgent && !isMemoryLoading && (
+          <div className="flex-grow flex items-center justify-center text-center p-2">
+            <Card className="bg-gray-850 border-0 shadow-none p-4">
+              <CardContent className="p-0">
+                <p className="text-gray-400">
+                  Select an agent from the "Memory Controls" above to view their memories.
+                </p>
+              </CardContent>
+            </Card>
           </div>
-        </aside>
-      </div>
+        )}
+
+      </aside>
     </div>
   );
 } 

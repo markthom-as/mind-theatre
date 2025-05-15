@@ -1,5 +1,6 @@
 import OpenAI from 'openai';
 import { AgentConfig, PromptsConfig } from './loadPrompts';
+import { agentDefs } from '../lib/psyche';
 
 // Initialize OpenAI client
 // Ensure OPENAI_API_KEY is set in your .env file
@@ -76,27 +77,80 @@ export async function getAgentLLMReply(
   return getLLMResponse(messagesForLLM, model, temp, maxTok);
 }
 
+// Helper function to check if the synthesiser output is sufficiently integrated
+function isSynthesizedEnough(text: string, agentNames: string[]): boolean {
+  if (!text) return false;
+
+  const bulletPoints = (text.match(/^[-*] /gm) || []).length;
+  const numberedPoints = (text.match(/^\d+\. /gm) || []).length;
+  
+  let mentionedAgentCount = 0;
+  agentNames.forEach(name => {
+    const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'); // Escape special regex chars in agent name
+    const regex = new RegExp('\\b' + escapedName + '\\b', 'gi'); // Safer regex construction
+    if ((text.match(regex) || []).length > 0) {
+      mentionedAgentCount++;
+    }
+  });
+
+  return bulletPoints <= 1 && numberedPoints <= 0 && mentionedAgentCount <= 1;
+}
+
 /**
- * Gets a synthesised response from the Psyche LLM.
- * @param userAndAgentDialogues - A string containing the user's input and all agent dialogues for the current turn.
+ * Gets a synthesised response from the Psyche LLM, with recursive refinement.
+ * @param userDialogues - A string containing the user\'s input.
+ * @param agentDialogues - A string containing all agent dialogues for the current turn.
  * @param promptsConfig - The loaded prompts configuration containing the synthesiser prompt and params.
- * @returns A promise that resolves to the Psyche's synthesised reply.
+ * @param currentReflection - Optional: The current reflection from a previous synthesis attempt (used in recursion).
+ * @param recursionDepth - Current depth of recursion.
+ * @returns A promise that resolves to the Psyche\'s synthesised reply.
  */
 export async function getSynthesiserLLMReply(
-    userAndAgentDialogues: string, // This should be the formatted string ready for the LLM
-    promptsConfig: PromptsConfig
+    userDialogues: string, 
+    agentDialogues: string,
+    promptsConfig: PromptsConfig,
+    currentReflection?: string, // Used for recursive calls
+    recursionDepth: number = 0
 ): Promise<string> {
+    const MAX_RECURSION_DEPTH = 2;
+
+    let contextForLLM: string;
+    if (currentReflection) {
+        // Triple-backticks for multi-line strings to avoid issues with internal quotes/backticks.
+        contextForLLM = `The user originally said: "${userDialogues}"
+My previous attempt to synthesize the internal dialogue was: "${currentReflection}"
+This wasn't quite right. I need to integrate this better into a single, coherent, synthesized perspective, speaking as the unified "I" of the Psyche. I should express the emergent understanding, feeling, or position that arises from the internal dialogue and my prior reflection. Avoid listing or summarizing parts. If I feel pulled in different directions, I should express that tension as a single voice.`;
+    } else {
+        contextForLLM = `The user said: "${userDialogues}"
+Here is the internal dialogue from different parts of the psyche, merged together:
+${agentDialogues}
+Your task is to integrate these voices into a single, coherent, synthesized perspective. Do NOT list or summarize the parts. Instead, speak as the unified psyche, expressing the emergent understanding, feeling, or position that arises from this internal dialogue. If you feel pulled in different directions, express the tension as a single voice. Do not enumerate or label the parts.`;
+    }
+
     const messagesForLLM: LLMMessage[] = [
         { role: 'system', content: promptsConfig.synthesiser_prompt },
-        { role: 'user', content: userAndAgentDialogues } 
+        { role: 'user', content: contextForLLM } 
     ];
 
     const llmParams = promptsConfig.llm_params || {};
-    const model = llmParams.model || process.env.DEFAULT_SYNTH_MODEL || 'gpt-4'; // Default to gpt-4 for synthesiser
+    const model = llmParams.model || process.env.DEFAULT_SYNTH_MODEL || 'gpt-4';
     const temp = llmParams.temperature !== undefined ? (typeof llmParams.temperature === 'string' ? parseFloat(llmParams.temperature) : llmParams.temperature as number) : undefined;
     const maxTok = llmParams.max_tokens !== undefined ? (typeof llmParams.max_tokens === 'string' ? parseInt(llmParams.max_tokens, 10) : llmParams.max_tokens as number) : undefined;
     
-    return getLLMResponse(messagesForLLM, model, temp, maxTok);
+    const synthesiserResponse = await getLLMResponse(messagesForLLM, model, temp, maxTok);
+
+    if (recursionDepth < MAX_RECURSION_DEPTH) {
+        // Explicitly type 'ad' using the structure of elements in agentDefs
+        const agentNames = agentDefs.map((ad: { name: string; prompt: string }) => ad.name);
+        if (!isSynthesizedEnough(synthesiserResponse, agentNames)) {
+            console.log(`[Synthesiser] Output not fully synthesized (depth ${recursionDepth}), recursing...`);
+            return getSynthesiserLLMReply(userDialogues, "", promptsConfig, synthesiserResponse, recursionDepth + 1);
+        }
+    } else if (recursionDepth >= MAX_RECURSION_DEPTH) {
+        console.log(`[Synthesiser] Max recursion depth (${MAX_RECURSION_DEPTH}) reached. Returning current synthesis.`);
+    }
+
+    return synthesiserResponse;
 }
 
 export async function create_embedding(text: string): Promise<number[]> {

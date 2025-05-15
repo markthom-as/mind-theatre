@@ -27,10 +27,31 @@ export default async function handler(
     return res.status(405).end(`Method ${req.method} Not Allowed`);
   }
 
-  const { agentName } = req.query;
+  const { agentName, sortBy, sortOrder } = req.query;
 
   if (!agentName || typeof agentName !== 'string') {
     return res.status(400).json({ error: 'Agent name is required and must be a string.' });
+  }
+
+  // Validate sortBy and sortOrder
+  const validSortFields = ['timestamp', 'recallCount'];
+  const validSortOrders = ['asc', 'desc'];
+
+  const orderByField = typeof sortBy === 'string' && validSortFields.includes(sortBy) ? sortBy : 'timestamp';
+  const orderByDirection = typeof sortOrder === 'string' && validSortOrders.includes(sortOrder) ? sortOrder : 'desc';
+
+  // Construct the orderBy object for Prisma
+  let orderByObject: any;
+  if (orderByField === 'recallCount') {
+    orderByObject = { recallCount: orderByDirection };
+  } else {
+    orderByObject = { timestamp: orderByDirection }; // Default to timestamp
+  }
+  // Handle nulls in recallCount by sorting them last when ascending, first when descending if desired.
+  // For simplicity, Prisma default null handling is often sufficient (typically sorts nulls first).
+  // If specific null sorting is needed (e.g., nulls last for recallCount asc):
+  if (orderByField === 'recallCount') {
+    orderByObject = { recallCount: { sort: orderByDirection, nulls: 'last' } };
   }
 
   try {
@@ -38,9 +59,7 @@ export default async function handler(
       where: {
         agentName: agentName,
       },
-      orderBy: {
-        timestamp: 'desc', // Show newest memories first, matching Python version
-      },
+      orderBy: orderByObject,
       select: { 
         text: true,
         timestamp: true,
