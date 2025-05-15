@@ -34,7 +34,7 @@ function ValenceArousal({ valence, arousal }: { valence?: number; arousal?: numb
   const arousalColor = arousal != null ? (arousal > 0.7 ? 'text-orange-500' : 'text-blue-500') : '';
 
   return (
-    <div className="absolute right-3 bottom-1 text-xs flex flex-col items-end gap-1">
+    <div className="absolute right-3 bottom-1 text-xs flex flex-col items-end gap-1 pt-1">
       <div className="flex gap-2 text-gray-400">
         {valence != null && <span className={valenceColor}>Valence: {valence.toFixed(2)}</span>}
         {arousal != null && <span className={arousalColor}>Arousal: {arousal.toFixed(2)}</span>}
@@ -166,9 +166,9 @@ export default function ChatUI() {
             name: msg.agent_name || msg.sender || msg.name,
             reply: msg.text || msg.reply,
             type: msg.type,
-            valence: msg.valence,
-            arousal: msg.arousal,
-            color: msg.color,
+            valence: msg.valence ?? 0,
+            arousal: msg.arousal ?? 0,
+            color: msg.color || '#888888', // Default color
             timestamp: msg.timestamp, // Added timestamp from history
             user: msg.type === 'user' ? msg.text : undefined,
           })));
@@ -254,18 +254,23 @@ export default function ChatUI() {
         }
       }
       const agentMsgs = (data.agent_dialogue || []).map((entry: any) => ({
-        ...entry,
+        name: entry.name,
+        reply: entry.reply,
         type: 'agent',
-        timestamp: entry.timestamp || new Date().toISOString(), // Added timestamp
+        color: entry.color || '#888888', // Default color
+        valence: entry.valence ?? 0,
+        arousal: entry.arousal ?? 0,
+        timestamp: entry.timestamp || new Date().toISOString(), 
       }));
       const psycheMsg = data.psyche_response
         ? [{
             name: 'Psyche',
             reply: data.psyche_response.text,
             type: 'psyche',
-            valence: data.valence,
-            arousal: data.arousal,
-            timestamp: data.psyche_response.timestamp || new Date().toISOString(), // Added timestamp
+            valence: data.psyche_response.valence ?? 0,
+            arousal: data.psyche_response.arousal ?? 0,
+            color: data.psyche_response.color || 'magenta', // Default Psyche color
+            timestamp: data.psyche_response.timestamp || new Date().toISOString(),
           }]
         : [];
       return [...trimmed, ...agentMsgs, ...psycheMsg];
@@ -349,26 +354,30 @@ export default function ChatUI() {
 
                     {/* Timestamp Part */}
                     {msg.timestamp && (
-                      <div className="text-xs text-gray-500 whitespace-nowrap">
-                        {new Date(msg.timestamp).toLocaleString([], { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                      <div
+                        className={`ml-2 text-xs ${
+                          msg.type === 'user' ? 'text-white' : 'text-gray-400'
+                        }`}
+                      >
+                        {new Date(msg.timestamp).toLocaleTimeString()}
                       </div>
                     )}
                   </div>
 
                   {msg.type === 'user' && msg.user && (
-                    <div className="dark:text-gray-200 text-gray-800 text-[12px] leading-snug max-w-none break-words">
+                    <div className={`dark:text-gray-200 text-gray-800 text-[12px] leading-snug max-w-none break-words ${(msg.valence !== undefined || msg.arousal !== undefined) ? 'mb-6' : ''}`}>
                       <ReactMarkdown
                         components={{
-                          p: ({node, ...props}) => <p className="m-0 p-0" {...props} />
+                          p: ({node, ...props}) => <p className="mb-2" {...props} />
                         }}
                       >{msg.user}</ReactMarkdown>
                     </div>
                   )}
                   {msg.type !== 'user' && msg.reply && (
-                    <div className="dark:text-gray-200 text-gray-800 text-[12px] leading-snug max-w-none break-words">
+                    <div className={`dark:text-gray-200 text-gray-800 text-[12px] leading-snug max-w-none break-words ${(msg.valence !== undefined || msg.arousal !== undefined) ? 'mb-6' : ''}`}>
                       <ReactMarkdown
                         components={{
-                          p: ({node, ...props}) => <p className="m-0 p-0" {...props} />
+                          p: ({node, ...props}) => <p className="mb-2" {...props} />
                         }}
                       >{msg.reply}</ReactMarkdown>
                     </div>

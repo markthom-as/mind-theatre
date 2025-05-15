@@ -13,6 +13,7 @@ model Agent {
   name      String   @unique
   prompt    String
   color     String?
+  llmParams Json?
   messages  Message[]
   createdAt DateTime @default(now())
 }
@@ -36,6 +37,7 @@ model Message {
   valence   Float?
   arousal   Float?
   userPrompt String?
+  color     String?
 }
 
 model Memory {

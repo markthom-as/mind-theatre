@@ -1,4 +1,3 @@
-
 import { PrismaClient } from '@prisma/client';
 import { Prisma } from '../node_modules/.prisma/client';
 
@@ -13,6 +12,7 @@ interface AgentFromYaml {
   prompt: string;
   llm_params?: Record<string, any>;
   // color is not in prompts.yaml
+  color?: string;
 }
 
 interface PromptsYaml {
@@ -35,19 +35,19 @@ async function main() {
     }
 
     for (const agentConfig of loadedPrompts.agents) {
-      const agentData = {
+      const agentData: Prisma.AgentCreateInput = {
         name: agentConfig.name,
         prompt: agentConfig.prompt,
-        // color: undefined, // Color is not in prompts.yaml, will be null or default
-        // llm_params cannot be stored without schema modification
+        color: agentConfig.color,
+        llmParams: agentConfig.llm_params ? agentConfig.llm_params as Prisma.InputJsonValue : undefined,
       };
 
       const agent = await prisma.agent.upsert({
         where: { name: agentConfig.name },
         update: {
           prompt: agentConfig.prompt,
-          // If you want to explicitly set color to null on update:
-          // color: null,
+          color: agentConfig.color,
+          llmParams: agentConfig.llm_params ? agentConfig.llm_params as Prisma.InputJsonValue : undefined,
         },
         create: agentData,
       });

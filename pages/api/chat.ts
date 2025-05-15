@@ -27,14 +27,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const agentReplies = await Promise.all(
     agents.map(async (agent) => {
       const reply = await runAgent(agent, message, 'openai');
-      await addMessage(chat.id, agent.name, reply, 'agent', agent.id);
-      return { name: agent.name, reply };
+      await addMessage(chat.id, agent.name, reply || '', 'agent', agent.id);
+      return { name: agent.name, reply: reply || '' };
     })
   );
 
   // Synthesize final response
   const psyche_response = await runSynthesis(agentReplies, message);
-  await addMessage(chat.id, 'Psyche', psyche_response, 'psyche');
+  await addMessage(chat.id, 'Psyche', psyche_response || '', 'psyche');
 
   // Return agent dialogue and synthesis
   res.json({

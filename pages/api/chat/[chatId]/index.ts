@@ -132,6 +132,8 @@ export default async function handler(
            continue; 
         }
 
+        const agentDisplayColor = agent.color || 'grey'; // Ensure we have a string
+
         await prisma.message.create({
           data: {
             chatId: chatId,
@@ -139,12 +141,15 @@ export default async function handler(
             sender: agent.name,
             text: agentReplyText,
             type: 'agent',
+            color: agentDisplayColor, // Use the ensured string
+            valence: emotionScores ? emotionScores.valence : null,
+            arousal: emotionScores ? emotionScores.arousal : null,
           },
         });
         agentDialoguesOutput.push({
           name: agent.name,
           reply: agentReplyText,
-          color: agent.color || 'grey',
+          color: agentDisplayColor, // Also use it here for consistency in the response
           valence: emotionScores ? emotionScores.valence : null,
           arousal: emotionScores ? emotionScores.arousal : null,
         });
@@ -179,14 +184,47 @@ export default async function handler(
       const promptsConfig: PromptsConfig = getPromptsConfig();
       const psycheResponseText = await getSynthesiserLLMReply(formattedDialoguesForSynthesiser, promptsConfig);
 
+      // Score valence and arousal for the Psyche's response
+      let psycheEmotionScores: { valence: number; arousal: number } | null = null;
+      try {
+        psycheEmotionScores = await score_valence_arousal(psycheResponseText);
+      } catch (vaError) {
+        console.error(`Error scoring valence/arousal for Psyche's response: "${psycheResponseText.substring(0,50)}..."`, vaError);
+        // psycheEmotionScores remains null
+      }
+
       const psycheMessageRecord = await prisma.message.create({
         data: {
           chatId: chatId,
           sender: 'Psyche',
           text: psycheResponseText,
           type: 'psyche',
+          valence: psycheEmotionScores ? psycheEmotionScores.valence : null,
+          arousal: psycheEmotionScores ? psycheEmotionScores.arousal : null,
         },
       });
+
+      // After saving Psyche's message, check if it should be stored as an episodic memory
+      if (should_write_memory(psycheResponseText) && psycheEmotionScores) {
+        try {
+          // 1. Create embedding for the Psyche's response
+          const psycheEmbedding = await create_embedding(psycheResponseText);
+
+          // 2. Add to episodic memory with embedding and scores
+          console.log(`[Chat API] About to add memory for Psyche. UserInput: "${userInput}", PsycheResponse: "${psycheResponseText.substring(0,50)}..."`);
+          await add_episodic_memory({
+            agentName: 'Psyche', // Special identifier for Psyche's memories
+            text: psycheResponseText,
+            userPrompt: userInput, // The user input that led to this psyche response
+            embedding: psycheEmbedding,
+            valence: psycheEmotionScores.valence, // psycheEmotionScores is guaranteed non-null here
+            arousal: psycheEmotionScores.arousal, // psycheEmotionScores is guaranteed non-null here
+          });
+        } catch (memoryError) {
+          // Log the error but don't let it break the chat flow
+          console.error(`Failed to add episodic memory for Psyche:`, memoryError);
+        }
+      }
 
       res.status(200).json({
         user_message: userMessageRecord,
