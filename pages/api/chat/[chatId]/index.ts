@@ -4,6 +4,7 @@ import { getAgents, AgentConfig, getPromptsConfig, PromptsConfig } from '../../.
 import { getAgentLLMReply, getSynthesiserLLMReply, create_embedding, LLMMessage, score_valence_arousal } from '../../../../lib/llmUtils';
 import { Message, Memory } from '../../../../node_modules/.prisma/client';
 import { add_episodic_memory, should_write_memory, retrieve_relevant_memories } from "../../../../lib/memoryUtils";
+import * as net from 'net';
 
 // Keep AgentDialogueEntry, but it will be streamed one by one
 interface AgentDialogueEntry {
@@ -24,7 +25,7 @@ export default async function handler(
 ) {
   const { chatId } = req.query;
   const SSE_DELIMITER = "\n\n";
-  console.log(new Date().toISOString(), `[HANDLER START] Chat ID: ${chatId}`);
+  // console.log(new Date().toISOString(), `[HANDLER START] Chat ID: ${chatId}`);
 
   if (typeof chatId !== 'string') {
     // For streaming, we'd ideally stream an error event too, but for setup errors, early JSON exit is fine.
@@ -33,12 +34,13 @@ export default async function handler(
 
   if (req.method === 'POST') {
     const { message: userInput, userId = 'user' } = req.body;
-    console.log(new Date().toISOString(), `[USER INPUT] ${userInput.substring(0, 50)}...`);
+    // console.log(new Date().toISOString(), `[USER INPUT] ${userInput.substring(0, 50)}...`);
 
-    // Attempt to disable Nagle's algorithm for this response socket
-    if (req.socket && typeof req.socket.setNoDelay === 'function') {
-      req.socket.setNoDelay(true);
-      console.log(new Date().toISOString(), "[SETNODELAY] Nagle's algorithm disabled for the socket.");
+    // Disable Nagle's algorithm
+    const socket = res.socket as net.Socket;
+    if (socket) {
+      socket.setNoDelay(true);
+      // console.log(new Date().toISOString(), "[SETNODELAY] Nagle's algorithm disabled for the socket.");
     }
 
     if (!userInput || typeof userInput !== 'string') {
@@ -52,12 +54,12 @@ export default async function handler(
       'Connection': 'keep-alive',
       'X-Accel-Buffering': 'no', // Necessary for Vercel/Nginx to prevent buffering
     });
-    console.log(new Date().toISOString(), "[STREAM HEADERS SENT]");
+    // console.log(new Date().toISOString(), "[STREAM HEADERS SENT]");
     // --- End Streaming Setup ---
 
     try {
       const memoryPromises: Promise<void>[] = []; // Array to hold memory processing promises
-      console.log(new Date().toISOString(), "[TRY BLOCK START]");
+      // console.log(new Date().toISOString(), "[TRY BLOCK START]");
 
       const chatSession = await prisma.chat.findUnique({ where: { id: chatId } });
       if (!chatSession) {
@@ -69,25 +71,25 @@ export default async function handler(
         res.end();
         return;
       }
-      console.log(new Date().toISOString(), "[CHAT SESSION VALIDATED]");
+      // console.log(new Date().toISOString(), "[CHAT SESSION VALIDATED]");
 
       // Save and stream the user's message first (optional, but good for UI)
       const userMessageRecord = await prisma.message.create({
         data: { chatId: chatId, sender: userId, text: userInput, type: 'user' },
       });
-      console.log(new Date().toISOString(), "[USER MESSAGE SAVED]");
+      // console.log(new Date().toISOString(), "[USER MESSAGE SAVED]");
       res.write(`data: ${JSON.stringify({ type: 'user_message', payload: userMessageRecord })}${SSE_DELIMITER}`);
-      console.log(new Date().toISOString(), "[USER MESSAGE STREAMED]");
+      // console.log(new Date().toISOString(), "[USER MESSAGE STREAMED]");
       await new Promise(resolve => setTimeout(resolve, 0));
-      console.log(new Date().toISOString(), "[USER MESSAGE YIELD AFTER STREAM]");
+      // console.log(new Date().toISOString(), "[USER MESSAGE YIELD AFTER STREAM]");
       
 
       const agents: AgentConfig[] = getAgents();
       const agentRepliesForSynthesis: { name: string; reply: string }[] = [];
-      console.log(new Date().toISOString(), `[AGENT PROCESSING START] Found ${agents.length} agents.`);
+      // console.log(new Date().toISOString(), `[AGENT PROCESSING START] Found ${agents.length} agents.`);
       
       const agentProcessingPromises = agents.map(async (agent, index) => {
-        console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] START PROCESSING`);
+        // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] START PROCESSING`);
         try {
           const rawHistory = await prisma.message.findMany({
             where: { chatId: chatId, OR: [{ type: 'user' }, { type: 'agent', agentId: agent.name }] },
@@ -99,9 +101,9 @@ export default async function handler(
           
           let retrievedMemories: Memory[] = [];
           try {
-            console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Retrieving memories...`);
+            // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Retrieving memories...`);
             retrievedMemories = await retrieve_relevant_memories(agent.name, userInput, 3);
-            console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Retrieved ${retrievedMemories.length} memories.`);
+            // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Retrieved ${retrievedMemories.length} memories.`);
           } catch (retrievalError) {
             console.error(`Error retrieving memories for agent ${agent.name}:`, retrievalError);
             // Optionally stream this specific error for the agent
@@ -118,9 +120,9 @@ export default async function handler(
           }
           messagesForAgentLLM = messagesForAgentLLM.concat(agentTurnHistory);
           
-          console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Getting LLM reply...`);
+          // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Getting LLM reply...`);
           const agentReplyText = await getAgentLLMReply(agent, userInput, messagesForAgentLLM);
-          console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] LLM reply received: ${agentReplyText.substring(0,30)}...`);
+          // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] LLM reply received: ${agentReplyText.substring(0,30)}...`);
 
           let emotionScores: { valence: number; arousal: number } | null = null;
           try {
@@ -148,19 +150,19 @@ export default async function handler(
             userPrompt: null,
           };
           
-          console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Saving message to DB...`);
+          // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Saving message to DB...`);
           const savedAgentMessage = await prisma.message.create({ data: agentMessageData as any}); // Prisma will add id, timestamp
-          console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Message saved to DB (ID: ${savedAgentMessage.id})`);
+          // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Message saved to DB (ID: ${savedAgentMessage.id})`);
 
           const agentDialogueEntry: AgentDialogueEntry & { id: string } = { // Add id for client
             id: savedAgentMessage.id, name: agent.name, reply: agentReplyText, color: agentDisplayColor,
             valence: emotionScores?.valence ?? null, arousal: emotionScores?.arousal ?? null,
           };
-          console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Writing to client stream...`);
+          // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Writing to client stream...`);
           res.write(`data: ${JSON.stringify({ type: 'agent_update', payload: agentDialogueEntry })}${SSE_DELIMITER}`);
-          console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Wrote to client stream.`);
+          // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Wrote to client stream.`);
           await new Promise(resolve => setTimeout(resolve, 0));
-          console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Yielded after stream write.`);
+          // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] Yielded after stream write.`);
           
           agentRepliesForSynthesis.push({ name: agent.name, reply: agentReplyText });
 
@@ -168,11 +170,11 @@ export default async function handler(
             const currentAgentName = agent.name; // Capture agent name for async context
             const currentUserInput = userInput; // Capture user input for async context
             const currentEmotionScores = { ...emotionScores }; // Capture scores for async context
-            console.log(new Date().toISOString(), `[AGENT ${index} - ${currentAgentName}] Initiating deferred memory work.`);
+            // console.log(new Date().toISOString(), `[AGENT ${index} - ${currentAgentName}] Initiating deferred memory work.`);
             memoryPromises.push(
               create_embedding(agentReplyText)
                 .then(embedding => {
-                  console.log(new Date().toISOString(), `[AGENT ${index} - ${currentAgentName}] Embedding created for memory.`);
+                  // console.log(new Date().toISOString(), `[AGENT ${index} - ${currentAgentName}] Embedding created for memory.`);
                   return add_episodic_memory({
                     agentName: currentAgentName,
                     text: agentReplyText,
@@ -183,7 +185,7 @@ export default async function handler(
                   });
                 })
                 .then(() => {
-                  console.log(new Date().toISOString(), `[AGENT ${index} - ${currentAgentName}] Deferred memory work COMPLETE.`);
+                  // console.log(new Date().toISOString(), `[AGENT ${index} - ${currentAgentName}] Deferred memory work COMPLETE.`);
                 })
                 .catch(memoryError => {
                   console.error(`Error in deferred episodic memory for agent ${currentAgentName}:`, memoryError);
@@ -191,7 +193,7 @@ export default async function handler(
                 })
             );
           }
-          console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] FINISHED main processing.`);
+          // console.log(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] FINISHED main processing.`);
           return agentReplyText; // Indicate success for this agent
         } catch (agentError) {
           console.error(new Date().toISOString(), `[AGENT ${index} - ${agent.name}] ERROR in processing:`, agentError);
@@ -202,18 +204,18 @@ export default async function handler(
         }
       });
 
-      console.log(new Date().toISOString(), "[AGENT LOOOP] Before Promise.allSettled(agentProcessingPromises)");
+      // console.log(new Date().toISOString(), "[AGENT LOOOP] Before Promise.allSettled(agentProcessingPromises)");
       await Promise.allSettled(agentProcessingPromises);
-      console.log(new Date().toISOString(), "[AGENT LOOOP] After Promise.allSettled(agentProcessingPromises) - All agent core tasks settled.");
+      // console.log(new Date().toISOString(), "[AGENT LOOOP] After Promise.allSettled(agentProcessingPromises) - All agent core tasks settled.");
 
       // Now, proceed with synthesis using successfully collected replies
       const promptsConfig: PromptsConfig = getPromptsConfig();
-      console.log(new Date().toISOString(), "[PSYCHE] Getting LLM reply...");
+      // console.log(new Date().toISOString(), "[PSYCHE] Getting LLM reply...");
       const psycheResponseText = await getSynthesiserLLMReply(userInput, 
         agentRepliesForSynthesis.map(ar => `${ar.name}: ${ar.reply}`).join('\n'), // Corrected to single backslash
         promptsConfig
       );
-      console.log(new Date().toISOString(), `[PSYCHE] LLM reply received: ${psycheResponseText.substring(0,30)}...`);
+      // console.log(new Date().toISOString(), `[PSYCHE] LLM reply received: ${psycheResponseText.substring(0,30)}...`);
 
       let psycheEmotionScores: { valence: number; arousal: number } | null = null;
       try {
@@ -223,30 +225,30 @@ export default async function handler(
         // Optionally stream this error too
       }
 
-      console.log(new Date().toISOString(), "[PSYCHE] Saving message to DB...");
+      // console.log(new Date().toISOString(), "[PSYCHE] Saving message to DB...");
       const psycheMessageRecord = await prisma.message.create({
         data: {
           chatId: chatId, sender: 'Psyche', text: psycheResponseText, type: 'psyche',
           valence: psycheEmotionScores?.valence ?? null, arousal: psycheEmotionScores?.arousal ?? null,
         },
       });
-      console.log(new Date().toISOString(), `[PSYCHE] Message saved to DB (ID: ${psycheMessageRecord.id})`);
+      // console.log(new Date().toISOString(), `[PSYCHE] Message saved to DB (ID: ${psycheMessageRecord.id})`);
 
-      console.log(new Date().toISOString(), "[PSYCHE] Writing to client stream...");
+      // console.log(new Date().toISOString(), "[PSYCHE] Writing to client stream...");
       res.write(`data: ${JSON.stringify({ type: 'psyche_response', payload: psycheMessageRecord })}${SSE_DELIMITER}`);
-      console.log(new Date().toISOString(), "[PSYCHE] Wrote to client stream.");
+      // console.log(new Date().toISOString(), "[PSYCHE] Wrote to client stream.");
       await new Promise(resolve => setTimeout(resolve, 0));
-      console.log(new Date().toISOString(), "[PSYCHE] Yielded after stream write.");
+      // console.log(new Date().toISOString(), "[PSYCHE] Yielded after stream write.");
 
       if (should_write_memory(psycheResponseText) && psycheEmotionScores) {
-        console.log(new Date().toISOString(), "[PSYCHE] Initiating deferred memory work.");
+        // console.log(new Date().toISOString(), "[PSYCHE] Initiating deferred memory work.");
         const currentUserInput = userInput; // Capture for async context
         const currentPsycheText = psycheResponseText; // Capture for async context
         const currentPsycheEmotionScores = { ...psycheEmotionScores }; // Capture for async context
         memoryPromises.push(
           create_embedding(currentPsycheText)
             .then(embedding => {
-              console.log(new Date().toISOString(), "[PSYCHE] Embedding created for memory.");
+              // console.log(new Date().toISOString(), "[PSYCHE] Embedding created for memory.");
               return add_episodic_memory({
                 agentName: 'Psyche',
                 text: currentPsycheText,
@@ -257,7 +259,7 @@ export default async function handler(
               });
             })
             .then(() => {
-              console.log(new Date().toISOString(), "[PSYCHE] Deferred memory work COMPLETE.");
+              // console.log(new Date().toISOString(), "[PSYCHE] Deferred memory work COMPLETE.");
             })
             .catch(memoryError => {
               console.error(`Error in deferred episodic memory for Psyche:`, memoryError);
@@ -266,14 +268,14 @@ export default async function handler(
         );
       }
       
-      console.log(new Date().toISOString(), "[MEMORY WAIT] Before Promise.allSettled(memoryPromises)");
+      // console.log(new Date().toISOString(), "[MEMORY WAIT] Before Promise.allSettled(memoryPromises)");
       await Promise.allSettled(memoryPromises);
-      console.log(new Date().toISOString(), "[MEMORY WAIT] After Promise.allSettled(memoryPromises) - All memory tasks settled.");
+      // console.log(new Date().toISOString(), "[MEMORY WAIT] After Promise.allSettled(memoryPromises) - All memory tasks settled.");
 
-      console.log(new Date().toISOString(), "[STREAM END] Writing event: done");
+      // console.log(new Date().toISOString(), "[STREAM END] Writing event: done");
       res.write(`event: done\ndata: ${JSON.stringify({ message: "Stream complete" })}${SSE_DELIMITER}`);
       res.end();
-      console.log(new Date().toISOString(), "[STREAM END] Response ended.");
+      // console.log(new Date().toISOString(), "[STREAM END] Response ended.");
 
     } catch (error) {
       console.error(new Date().toISOString(), "[GLOBAL ERROR] In handler: ", error);
@@ -298,5 +300,5 @@ export default async function handler(
         res.end(); // If headers sent, just end the response.
     }
   }
-  console.log(new Date().toISOString(), "[HANDLER END]");
+  // console.log(new Date().toISOString(), "[HANDLER END]");
 } 

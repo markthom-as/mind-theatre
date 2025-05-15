@@ -5,7 +5,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ArrowUp, ArrowDown } from 'lucide-react';
+import { Loader2, ArrowUp, ArrowDown, Info } from 'lucide-react';
+import InfoModal from './InfoModal';
 
 // Helper function to process color string
 const getProcessedColorForTailwind = (colorInput?: string): { type: 'hex' | 'class' | 'none', value?: string } => {
@@ -137,6 +138,7 @@ export default function ChatUI() {
   const [chatId, setChatId] = useState<string | null>(null);
   const [memorySortField, setMemorySortField] = useState<'timestamp' | 'recallCount'>('timestamp');
   const [memorySortOrder, setMemorySortOrder] = useState<'asc' | 'desc'>('desc');
+  const [isInfoModalOpen, setIsInfoModalOpen] = useState(false);
   const chatLogRef = useRef<HTMLDivElement>(null);
 
   // Scroll chat to bottom on new message
@@ -149,24 +151,17 @@ export default function ChatUI() {
   // Get or create chat session
   useEffect(() => {
     async function ensureChatSession() {
-      console.log("Attempting to ensure chat session...");
-      const match = window.location.pathname.match(/\/chat\/(.+)$/);
+      const match = window.location.pathname.match(/.+\/chat\/(.+)$/);
       let id = match ? match[1] : null;
-      console.log("Initial id from URL:", id);
 
       if (!id) {
-        console.log("No id in URL, attempting to start a new chat via API...");
         try {
           const resp = await fetch('/api/start_chat', { method: 'POST' });
-          console.log("API response status:", resp.status);
           if (resp.ok) {
             const data = await resp.json();
-            console.log("API response data:", data);
             id = data.chatId;
-            console.log("New id from API:", id);
             if (id) { 
               window.history.replaceState({}, '', `/chat/${id}`);
-              console.log("Updated window history with new id:", id);
             } else {
               console.error("Error: chat_id from API is null or undefined.");
             }
@@ -178,7 +173,6 @@ export default function ChatUI() {
         }
       }
       setChatId(id);
-      console.log("Final chatId set to state:", id);
     }
     ensureChatSession();
   }, []);
@@ -271,7 +265,6 @@ export default function ChatUI() {
     };
     setMessages((msgs) => {
       const newState = [...msgs, userMessage];
-      console.log("[ChatUI] User message optimistically added. New state:", truncateLog(newState)); // Added log
       return newState;
     });
 
@@ -286,7 +279,6 @@ export default function ChatUI() {
     }));
     setMessages(prev => {
       const newState = [...prev, ...agentPlaceholders];
-      console.log("[ChatUI] Agent placeholders added. New state:", truncateLog(newState)); // Added log
       return newState;
     });
 
@@ -308,35 +300,27 @@ export default function ChatUI() {
 
       const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
       let buffer = '';
-      console.log("[ChatUI] Starting stream processing loop...");
 
       while (true) {
-        console.log("[ChatUI] Waiting for next stream chunk or stream end...");
         const { value, done } = await reader.read();
-        console.log(`[ChatUI] reader.read() returned. done: ${done}, value received: ${!!value}`);
         
         if (value) {
-          console.log("[ChatUI] Stream chunk received:", truncateLog(value)); 
+          // console.log("[ChatUI] Stream chunk received:", truncateLog(value)); 
         }
 
         if (done) {
-          console.log("[ChatUI] Stream finished by reader.");
           setIsLoading(false); // Ensure loading is false if stream ends before 'event: done' from server
           break;
         }
 
         buffer += value;
-        console.log("[ChatUI] Raw buffer before EOL loop:", truncateLog(buffer)); // New log for raw buffer
         let eolIndex;
         
         while ((eolIndex = buffer.indexOf('\n\n')) >= 0) {
           const eventString = buffer.substring(0, eolIndex).trim();
-          console.log("[ChatUI] Extracted event string:", truncateLog(eventString.replace(/\n/g, '\\n')));
           buffer = buffer.substring(eolIndex + 2);
-          console.log("[ChatUI] Remaining buffer:", truncateLog(buffer.replace(/\n/g, '\\n')));
 
           if (eventString.startsWith('event: done')) {
-            console.log("[ChatUI] Received 'event: done' from server.");
             setIsLoading(false);
             return; 
           }
@@ -344,23 +328,17 @@ export default function ChatUI() {
           if (eventString.startsWith('data: ')) {
             const jsonString = eventString.substring('data: '.length);
             if (jsonString.trim() === "") {
-              console.log("[ChatUI] Empty data payload, skipping.");
               await new Promise(resolve => setTimeout(resolve, 0)); // Yield even for empty payload to prevent tight loop on bad data
               continue;
             }
-            console.log("[ChatUI] Attempting to parse JSON:", truncateLog(jsonString));
             try {
               const eventData = JSON.parse(jsonString);
-              console.log("[ChatUI] Parsed event data:", truncateLog(eventData));
 
               if (eventData.type === 'user_message') {
-                console.log("[ChatUI] Processing user_message event:", truncateLog(eventData.payload));
                 // Optional: Update user message with ID from DB if needed
               } else if (eventData.type === 'agent_update') {
-                console.log("[ChatUI] Processing agent_update event:", truncateLog(eventData.payload));
                 const agentPayload = eventData.payload as AgentDialogueEntry;
                 setMessages(prev => {
-                  console.log(`[ChatUI] Updating agent: ${agentPayload.name}. Placeholder ID to find: (name based)`);
                   const updated = prev.map(msg => 
                     (msg.name === agentPayload.name && msg.reply === 'Thinking...') ? 
                     {
@@ -374,13 +352,11 @@ export default function ChatUI() {
                     } : msg
                   );
                   if (JSON.stringify(prev) === JSON.stringify(updated)) {
-                    console.warn(`[ChatUI] Agent placeholder for ${agentPayload.name} not found or already updated. Current prev state:`, truncateLog(prev));
+                    // console.warn(`[ChatUI] Agent placeholder for ${agentPayload.name} not found or already updated. Current prev state:`, truncateLog(prev));
                   }
-                  console.log("[ChatUI] State after agent_update attempt for", agentPayload.name, truncateLog(updated));
                   return updated;
                 });
               } else if (eventData.type === 'psyche_response') {
-                console.log("[ChatUI] Processing psyche_response event:", truncateLog(eventData.payload));
                 const psychePayload = eventData.payload as PsycheMessagePayload;
                 setMessages(prev => {
                   const newState = [...prev, {
@@ -393,11 +369,9 @@ export default function ChatUI() {
                     arousal: psychePayload.arousal ?? undefined,
                     timestamp: psychePayload.timestamp || new Date().toISOString(),
                   } as MessageUI];
-                  console.log("[ChatUI] Added Psyche message to state. New state:", truncateLog(newState));
                   return newState;
                 });
               } else if (eventData.type === 'agent_error' || eventData.type === 'error') {
-                console.log("[ChatUI] Processing error event:", truncateLog(eventData.payload));
                 const errorPayload = eventData.payload as { name?: string; message: string };
                 if (errorPayload.name) { // Agent-specific error
                   setMessages(prev => prev.map(msg => 
@@ -416,10 +390,9 @@ export default function ChatUI() {
                 }
               }
             } catch (e) {
-              console.error("[ChatUI] Error parsing streamed JSON or updating UI:", e, "Original JSON string:", jsonString);
+              // console.error("[ChatUI] Error parsing streamed JSON or updating UI:", e, "Original JSON string:", jsonString);
             }
           }
-          // After processing one event (or a non-event string like only 'data: '), yield before next iteration of inner while loop.
           await new Promise(resolve => setTimeout(resolve, 0)); 
         }
       }
@@ -434,9 +407,6 @@ export default function ChatUI() {
         timestamp: new Date().toISOString(),
       }]);
       setIsLoading(false); // Ensure isLoading is set to false in case of error
-    } finally {
-      // isLoading should be reliably set by 'event: done' or in catch blocks.
-      console.log("[ChatUI] Exiting sendMessage function. isLoading:", isLoading);
     }
   }
 
@@ -454,9 +424,16 @@ export default function ChatUI() {
         {/* Top Bar / Navbar */}
         <header className="flex items-center justify-between bg-gray-800 text-gray-100 px-6 h-14 border-b border-gray-700 flex-shrink-0">
           <Link href="/">
-            <div className="font-semibold text-xl text-purple-400 tracking-wide">Mind Theatre</div>
+            <div className="flex items-center font-semibold text-xl text-purple-400 tracking-wide">
+              <span role="img" aria-label="brain icon" className="mr-2">🧠</span>
+              <span>Mind Theatre</span>
+              <span className="ml-2 px-1 py-1 text-[0.6rem] font-semibold leading-none bg-yellow-500 text-yellow-900 rounded-md">BETA</span>
+            </div>
           </Link>
-          <div className="flex space-x-2">
+          <div className="flex space-x-2 items-center">
+            <Button variant="ghost" size="icon" onClick={() => setIsInfoModalOpen(true)} className="text-gray-400 hover:text-purple-400">
+              <Info className="h-7 w-7" />
+            </Button>
             {/* Add any other header components here */}
           </div>
         </header>
@@ -596,7 +573,9 @@ export default function ChatUI() {
         {/* Memory Controls Card */}
         <Card className="bg-gray-850 border-0 shadow-none flex-shrink-0">
           <CardHeader className="p-2">
-            <CardTitle className="text-md text-purple-300">Memory Controls</CardTitle>
+            <CardTitle className="text-md text-purple-300">
+              Memory Controls{selectedAgent ? `: ${selectedAgent}` : ''}
+            </CardTitle>
           </CardHeader>
           <CardContent className="p-2">
             <div className="flex items-center space-x-2">
@@ -660,11 +639,11 @@ export default function ChatUI() {
         {/* Memory List Card */}
         {selectedAgent && (
           <Card className="bg-gray-850 border-0 shadow-none flex-grow flex flex-col min-h-0">
-            <CardHeader className="p-2">
+            {/* <CardHeader className="p-2">
                <CardTitle className="text-md text-purple-400">Memories: {selectedAgent}</CardTitle>
-            </CardHeader>
+            </CardHeader> */}
             <CardContent className="flex-grow flex flex-col min-h-0 p-0">
-              <div className="flex-1 overflow-y-auto min-h-0 text-sm space-y-2 p-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
+              <div className="flex-1 overflow-y-auto min-h-0 text-sm space-y-1 px-2 pt-1 pb-1 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800">
                 {isMemoryLoading && (
                   <div className="flex items-center justify-center h-full">
                     <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
@@ -685,7 +664,7 @@ export default function ChatUI() {
                         {entry.userPrompt}
                       </div>
                     )}
-                    <div className="text-gray-100 mb-1 text-sm">{entry.text}</div>
+                    <div className="text-gray-100 mb-[2px] text-[12px]">{entry.text}</div>
                     <div className="relative h-8">
                       <ValenceArousal valence={entry.valence} arousal={entry.arousal} />
                     </div>
@@ -693,11 +672,11 @@ export default function ChatUI() {
                 ))}
               </div>
             </CardContent>
-            <div className="p-2 border-t border-gray-700 mt-auto flex-shrink-0">
+            {/* <div className="p-2 border-t border-gray-700 mt-auto flex-shrink-0">
               <Button variant="outline" className="w-full border-red-700 text-red-400 hover:bg-red-700 hover:text-gray-100 focus:ring-red-500" onClick={clearMemory}>
                 Clear Memories for {selectedAgent}
               </Button>
-            </div>
+            </div> */}
           </Card>
         )}
 
@@ -714,6 +693,8 @@ export default function ChatUI() {
         )}
 
       </aside>
+
+      {isInfoModalOpen && <InfoModal onClose={() => setIsInfoModalOpen(false)} />}
     </div>
   );
 } 

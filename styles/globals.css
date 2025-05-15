@@ -61,3 +61,51 @@
     }
 }
 */ 
+
+/* Custom Scrollbar Styles for Auto-Hide Effect */
+
+/* For Webkit browsers (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+  width: 8px; /* Width of vertical scrollbar */
+  height: 8px; /* Height of horizontal scrollbar */
+}
+
+::-webkit-scrollbar-track {
+  background: transparent; /* Make track invisible */
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.3); /* Semi-transparent thumb for light mode */
+  border-radius: 4px;
+  opacity: 0; /* Initially invisible */
+  transition: opacity 0.2s ease-in-out;
+}
+
+/* Show scrollbar thumb when its direct scrollable container is hovered */
+*:hover::-webkit-scrollbar-thumb {
+  opacity: 1;
+}
+
+/* Dark mode scrollbar thumb for Webkit */
+.dark ::-webkit-scrollbar-thumb {
+  background-color: rgba(255, 255, 255, 0.3); /* Lighter thumb for dark mode */
+}
+
+/* For Firefox */
+* {
+  scrollbar-width: thin; /* Or "auto" */
+  /* Set initial scrollbar to be transparent */
+  scrollbar-color: transparent transparent;
+  /* Transition for scrollbar-color (might not be supported in all FF versions but good to have) */
+  transition: scrollbar-color 0.2s ease-in-out; 
+}
+
+*:hover {
+  /* On hover of any element, if it has a scrollbar, make its thumb visible */
+  scrollbar-color: rgba(0, 0, 0, 0.3) transparent; /* Thumb visible, track transparent for light mode */
+}
+
+/* Dark mode scrollbar for Firefox */
+.dark *:hover {
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent; /* Lighter thumb for dark mode */
+} 
