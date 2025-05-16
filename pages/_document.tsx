@@ -1,4 +1,5 @@
 import { Html, Head, Main, NextScript } from 'next/document'
+import { Analytics } from "@vercel/analytics/next"
 
 export default function Document() {
   return (
@@ -11,6 +12,7 @@ export default function Document() {
         <link rel="shortcut icon" href="/favicon.ico" />
         {/* You might also want to add a theme-color meta tag if your manifest specifies one */}
         {/* e.g., <meta name="theme-color" content="#ffffff" /> */}
+        <Analytics />
       </Head>
       <body>
         <Main />
