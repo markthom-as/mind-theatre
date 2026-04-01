@@ -24,6 +24,9 @@ export default async function handler(
   res: NextApiResponse // Removed the specific ChatTurnResponse type here as we're streaming
 ) {
   const { chatId } = req.query;
+  // Log the received chatId from the query
+  console.log(`[API /chat/${chatId}] Received chatId from req.query:`, chatId, `(type: ${typeof chatId})`);
+
   const SSE_DELIMITER = "\n\n";
   // console.log(new Date().toISOString(), `[HANDLER START] Chat ID: ${chatId}`);
 
@@ -179,6 +182,7 @@ export default async function handler(
                     agentName: currentAgentName,
                     text: agentReplyText,
                     userPrompt: currentUserInput,
+                    chatId: chatId,
                     embedding: embedding,
                     valence: currentEmotionScores.valence,
                     arousal: currentEmotionScores.arousal,
@@ -250,9 +254,10 @@ export default async function handler(
             .then(embedding => {
               // console.log(new Date().toISOString(), "[PSYCHE] Embedding created for memory.");
               return add_episodic_memory({
-                agentName: 'Psyche',
+                agentName: "Psyche", // Psyche is the agent name here
                 text: currentPsycheText,
                 userPrompt: currentUserInput,
+                chatId: chatId,
                 embedding: embedding,
                 valence: currentPsycheEmotionScores.valence,
                 arousal: currentPsycheEmotionScores.arousal,

@@ -7,6 +7,7 @@ interface EpisodicMemoryInput {
   agentName: string;
   text: string;
   userPrompt: string;
+  chatId: string;
   embedding?: number[]; // Embedding is now optional, will be generated if not provided
   valence?: number;
   arousal?: number;
@@ -19,32 +20,29 @@ interface EpisodicMemoryInput {
  */
 export async function add_episodic_memory(memoryInput: EpisodicMemoryInput): Promise<void> {
   try {
-    const { agentName, text, userPrompt, valence, arousal } = memoryInput;
-    const embeddingDML = memoryInput.embedding ? `'[${memoryInput.embedding.join(',')}]'::vector` : 'NULL'; // Renamed for clarity as it's DML part
+    const { agentName, text, userPrompt, chatId, valence, arousal } = memoryInput;
+    const embeddingDML = memoryInput.embedding ? `\'[${memoryInput.embedding.join(',')}]\'::vector` : 'NULL';
 
     const valenceValue = typeof valence === 'number' ? valence : null;
     const arousalValue = typeof arousal === 'number' ? arousal : null;
     const userPromptValue = userPrompt || null;
     const newId = uuidv4();
 
-    // Explicitly set all columns that don't have DB-level auto-update triggers like @updatedAt
-    // or provide values for those that do if raw query bypasses Prisma's management.
-    // For timestamp, createdAt, updatedAt, using NOW() is safest for raw inserts.
-    // recallCount defaults to 0, lastRecalledTs to NULL.
-    console.log(`[MemoryUtils] Executing INSERT for agent ${agentName}. userPromptValue: "${userPromptValue}"`);
+    console.log(`[MemoryUtils] Executing INSERT for agent ${agentName}. userPromptValue: "${userPromptValue}", chatId: ${chatId}`);
     await prisma.$executeRawUnsafe(
-      `INSERT INTO "Memory" ("id", "agentName", "text", "userPrompt", "embedding", "valence", "arousal", "timestamp", "createdAt", "updatedAt", "recallCount", "lastRecalledTs")
-       VALUES ($1, $2, $3, $4, ${embeddingDML}, $5, $6, NOW(), NOW(), NOW(), 0, NULL)`,
+      `INSERT INTO "Memory" ("id", "agentName", "text", "userPrompt", "embedding", "valence", "arousal", "timestamp", "createdAt", "updatedAt", "recallCount", "lastRecalledTs", "chatId")
+       VALUES ($1, $2, $3, $4, ${embeddingDML}, $5, $6, NOW(), NOW(), NOW(), 0, NULL, $7)`,
       newId,
       agentName,
       text,
       userPromptValue,
       // embeddingDML is interpolated
       valenceValue,
-      arousalValue
+      arousalValue,
+      chatId
     );
 
-    console.log(`Episodic memory added (ID: ${newId}) for agent ${memoryInput.agentName}: "${memoryInput.text.substring(0, 50)}..." (Embedding ${memoryInput.embedding ? 'included' : 'omitted'}, Valence: ${valenceValue ?? 'N/A'}, Arousal: ${arousalValue ?? 'N/A'})`);
+    console.log(`Episodic memory added (ID: ${newId}) for agent ${memoryInput.agentName} (ChatID: ${chatId}): "${memoryInput.text.substring(0, 50)}..." (Embedding ${memoryInput.embedding ? 'included' : 'omitted'}, Valence: ${valenceValue ?? 'N/A'}, Arousal: ${arousalValue ?? 'N/A'})`);
   } catch (error) {
     console.error('Error adding episodic memory:', error);
     throw error;

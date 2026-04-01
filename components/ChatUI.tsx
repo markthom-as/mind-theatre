@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { Loader2, ArrowUp, ArrowDown, Info } from 'lucide-react';
+import { Loader2, ArrowUp, ArrowDown, Info, Link2 } from 'lucide-react';
 import InfoModal from './InfoModal';
 
 // Helper function to process color string
@@ -97,10 +97,11 @@ interface AgentConfig { // Minimal definition for this context
 interface AgentMemoryEntry {
   text: string;
   timestamp: string;
-  valence: number;
-  arousal: number;
+  valence: number | null;
+  arousal: number | null;
   userPrompt: string | null;
   recallCount?: number;
+  chatId?: string | null;
 }
 
 // Define AgentDialogueEntry interface for client-side type safety
@@ -528,7 +529,7 @@ export default function ChatUI() {
                     </div>
                   )}
                   {(msg.valence !== undefined || msg.arousal !== undefined) && (
-                    <ValenceArousal valence={msg.valence} arousal={msg.arousal} />
+                    <ValenceArousal valence={msg.valence ?? undefined} arousal={msg.arousal ?? undefined} />
                   )}
                 </div>
               );
@@ -650,26 +651,48 @@ export default function ChatUI() {
                   </div>
                 )}
                 {!isMemoryLoading && agentMemory.length === 0 && <div className="text-gray-400 p-4 text-center">No memories for this agent.</div>}
-                {!isMemoryLoading && agentMemory.map((entry, i) => (
-                  <Card key={i} className="p-2 border-b border-gray-700 last:border-b-0 bg-gray-700 text-gray-100 shadow-sm border-0">
-                    <div className="text-xs text-gray-400 mb-1 flex justify-between">
-                      <span>{new Date(entry.timestamp).toLocaleString()}</span>
-                      {typeof entry.recallCount === 'number' && (
-                        <span className="text-xs text-purple-400">Recalled: {entry.recallCount} times</span>
-                      )}
-                    </div>
-                    {entry.userPrompt && (
-                      <div className="bg-gray-600 text-gray-300 text-xs px-2 py-1 my-1 border-l-2 border-yellow-500 rounded">
-                        <span className="font-bold text-purple-400 mr-1">Prompt:</span>
-                        {entry.userPrompt}
+                {!isMemoryLoading && agentMemory.map((entry, i) => {
+                  // TEMPORARY DEBUGGING: Log the critical fields
+                  console.log(`Memory item ${i}: userPrompt="${entry.userPrompt}", chatId="${entry.chatId}"`);
+
+                  return (
+                    <Card key={`${entry.timestamp}-${i}`} className="p-2 border-b border-gray-700 last:border-b-0 bg-gray-700 text-gray-100 shadow-sm border-0">
+                      <div className="text-xs text-gray-400 mb-1 flex justify-between">
+                        <span>{new Date(entry.timestamp).toLocaleString()}</span>
+                        {typeof entry.recallCount === 'number' && (
+                          <span className="text-xs text-purple-400">Recalled: {entry.recallCount} times</span>
+                        )}
                       </div>
-                    )}
-                    <div className="text-gray-100 mb-[2px] text-[12px]">{entry.text}</div>
-                    <div className="relative h-8">
-                      <ValenceArousal valence={entry.valence} arousal={entry.arousal} />
-                    </div>
-                  </Card>
-                ))}
+                      {entry.userPrompt && entry.userPrompt.trim() !== '' && ( // More robust check
+                        <div className="bg-gray-600 text-gray-300 text-xs px-2 py-1 my-1 border-l-2 border-yellow-500 rounded flex items-center justify-between">
+                          <div> {/* Wrapper for prompt text */}
+                            <span className="font-bold text-purple-400 mr-1">Prompt:</span>
+                            {entry.userPrompt}
+                          </div>
+                          {entry.chatId && entry.chatId.trim() !== '' && ( // More robust check
+                            <Link href={`/chat/${entry.chatId}`} passHref legacyBehavior>
+                              <Button
+                                asChild 
+                                variant="outline"
+                                size="sm"
+                                className="ml-2 text-xs py-1 px-2 h-auto border-purple-500 text-purple-400 hover:bg-purple-600 hover:text-white focus:ring-purple-400 shrink-0"
+                              >
+                                <a> 
+                                  <Link2 className="h-3 w-3 mr-1" />
+                                  Chat
+                                </a>
+                              </Button>
+                            </Link>
+                          )}
+                        </div>
+                      )}
+                      <div className="text-gray-100 mb-[2px] text-[12px]">{entry.text}</div>
+                      <div className="relative h-8"> 
+                        <ValenceArousal valence={entry.valence ?? undefined} arousal={entry.arousal ?? undefined} />
+                      </div>
+                    </Card>
+                  );
+                })}
               </div>
             </CardContent>
             {/* <div className="p-2 border-t border-gray-700 mt-auto flex-shrink-0">

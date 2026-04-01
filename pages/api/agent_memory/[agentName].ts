@@ -13,6 +13,7 @@ interface AgentMemoryResponseItem {
   arousal: number | null;
   userPrompt: string | null;
   recallCount: number | null;
+  chatId: string | null;
   // Optionally add other fields if the client might need them:
   // agentName: string;
   // createdAt: Date;
@@ -67,6 +68,7 @@ export default async function handler(
         arousal: true,
         userPrompt: true,
         recallCount: true,
+        chatId: true
       }
     });
 
